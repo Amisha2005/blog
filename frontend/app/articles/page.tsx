@@ -15,6 +15,7 @@ import { useState } from "react";
 const allPosts = [
   {
     id: 1,
+    src:"https://images.unsplash.com/photo-1547658719-da2b51169166?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8d2ViJTIwZGVzaWdufGVufDB8fDB8fHww",
     title: "The Future of Web Development in 2025",
     excerpt: "React Server Components, AI-assisted coding, edge runtime, and what it all means for developers.",
     author: "Sarah Chen",
@@ -27,7 +28,8 @@ const allPosts = [
   {
     id: 2,
     title: "Mastering TypeScript: Advanced Patterns",
-    excerpt: "Conditional types, mapped types, and utility types that will level up your codebase.",
+    src:"https://images.unsplash.com/photo-1568716353609-12ddc5c67f04?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8dHlwZSUyMHNjcmlwdCUyMGluJTIwamF2YXxlbnwwfHwwfHx8MA%3D%3D",
+    excerpt: "Explore advanced TypeScript patterns to write safer and more maintainable code.",
     author: "Sarah Chen",
     date: "2025-12-02",
     readTime: "12 min",
@@ -35,8 +37,9 @@ const allPosts = [
   },
   {
     id: 3,
-    title: "Building Accessible Forms with React",
-    excerpt: "Best practices and common pitfalls when creating forms that work for everyone.",
+        src:"https://images.unsplash.com/photo-1690683789978-3cf73960d650?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTh8fHB5dGhvbnxlbnwwfHwwfHx8MA%3D%3D",
+    title: "Specialization in AI",
+    excerpt: "An in-depth guide to Python's latest features for AI and machine learning development.",
     author: "Sarah Chen",
     date: "2025-11-30",
     readTime: "7 min",
@@ -44,8 +47,9 @@ const allPosts = [
   },
   {
     id: 4,
-    title: "Next.js 15: What's Actually New?",
-    excerpt: "Deep dive into the latest features, performance improvements, and breaking changes.",
+    title: "Specialization in DataScience",
+    src:"https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8ZGF0YSUyMHNjaWVuY2V8ZW58MHx8MHx8fDA%3D",
+    excerpt: "A specialization course on DataScience using Java and its applications.",
     author: "Sarah Chen",
     date: "2025-11-25",
     readTime: "10 min",
@@ -53,8 +57,9 @@ const allPosts = [
   },
   {
     id: 5,
-    title: "Tailwind CSS Anti-Patterns to Avoid",
-    excerpt: "Common mistakes developers make and how to write cleaner, maintainable styles.",
+    title: "specializaition in Cybersecurity",
+    src:"https://media.istockphoto.com/id/2020157664/photo/cyber-security-network-cybersecurity-concept-global-network-security-technology-business.webp?a=1&b=1&s=612x612&w=0&k=20&c=3dJ_LcKoMA7sEzkX3e6W-DEiyz3RCfPrwmzTmjUS4SM=",
+    excerpt: "A comprehensive guide to modern cybersecurity practices and protocols.",
     author: "Sarah Chen",
     date: "2025-11-20",
     readTime: "6 min",
@@ -76,7 +81,7 @@ export default function ArticlesPage() {
   });
 
   return (
-    <div className="container max-w-6xl px-4 py-12 md:py-16">
+    <div className="container max-w-6xl px-4 py-12 md:py-16 mx-auto">
       {/* Header */}
       <div className="text-center mb-12">
         <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-4">All Articles</h1>
@@ -130,7 +135,10 @@ export default function ArticlesPage() {
           {filteredPosts.map((post) => (
             <Card key={post.id} className="h-full flex flex-col hover:shadow-lg transition-shadow">
               <CardHeader>
-                <div className="bg-muted border-2 border-dashed rounded-xl aspect-video mb-4" />
+                <div className="bg-muted border-2 border-dashed rounded-xl aspect-video mb-4">
+                 {post.src ? <img className="rounded-xl" style={{"width":"100%","height":"100%"}} src={post.src}/> : null}
+                  
+                  </div>
                 <div className="flex items-center gap-3 mb-3">
                   <Avatar className="h-8 w-8">
                     <AvatarImage src={post.avatar} />

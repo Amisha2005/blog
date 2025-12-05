@@ -36,11 +36,11 @@ const skills = [
 
 export default function AboutPage() {
   return (
-    <div className="container max-w-5xl px-4 py-16 md:py-24">
+    <div className="container max-w-5xl px-4 py-16 md:py-24 mx-auto">
       {/* Hero Section */}
       <div className="text-center mb-16">
         <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-6">
-          About InsightFlow
+          About NovaTech
         </h1>
         <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
           A place where complex ideas in web development become clear. I share what I learn while building real-world applications — no fluff, just practical insights.

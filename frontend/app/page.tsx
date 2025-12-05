@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 
 const featuredPost = {
-  title: "The Future of Web Development in 2025",
+  title: "Meet Nova — Your AI Technical Interviewer",
   excerpt: "Exploring React Server Components, AI-assisted coding, and the edge runtime revolution.",
   author: "Sarah Chen",
   avatar: "/avatar.jpg",
