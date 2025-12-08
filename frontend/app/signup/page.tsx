@@ -1,7 +1,13 @@
 // app/signup/page.tsx
 "use client";
-
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useRouter } from 'next/navigation';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,15 +16,53 @@ import Link from "next/link";
 import { Github, Chrome, Mail, Sparkles, Sun, Moon } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
-
+import { useAuth } from "../Auth";
 export default function SignUpPage() {
+  const router = useRouter();
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
   // Prevent hydration mismatch
   useEffect(() => setMounted(true), []);
-     
-    return (
+
+  const [user, setUser] = useState({
+    username: "",
+    email: "",
+    password: "",
+  });
+  const { storeTokenInLS } = useAuth();
+  const handleInput = (e) => {
+    let name = e.target.name;
+    let value = e.target.value;
+    setUser({ ...user, [name]: value });
+  }
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    console.log(user);
+    try {
+      const response = await fetch("http://localhost:5000/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(user),
+      });
+      const res_data = await response.json();
+      console.log("res from server", res_data);
+      if (response.ok) {
+        const successMsg = "registration successful!";
+        alert("successfully registered");
+        // toast.success(successMsg);
+        storeTokenInLS(res_data.token);
+        setUser({ username: "", email: "", password: "" });
+        router.push('/login');
+      } else {
+        // toast.error(res_data.extraDetails ? res_data.extraDetails : res_data.message);
+      }
+    } catch (error) {
+      console.log("register", error);
+    }
+  };
+
+  return (
     <>
       <div className="min-h-screen flex items-center justify-center px-4 py-12 relative overflow-hidden transition-colors duration-500 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-slate-950 dark:via-purple-950 dark:to-slate-900">
         {/* Animated background blobs */}
@@ -89,39 +133,57 @@ export default function SignUpPage() {
             {/* Form */}
             <form className="space-y-5">
               <div className="space-y-2">
-                <Label htmlFor="name" className="text-gray-700 dark:text-gray-300 font-medium">
+                <Label
+                  htmlFor="name"
+                  className="text-gray-700 dark:text-gray-300 font-medium"
+                >
                   Full Name
                 </Label>
                 <Input
-                  id="name"
+                  id="username"
+                  name="username"
+                  value={user.username}
                   type="text"
                   placeholder="Sarah Chen"
+                  onChange={handleInput}
                   required
                   className="h-12 bg-gray-50/70 dark:bg-white/5 border-gray-300 dark:border-white/20 focus:border-purple-500 dark:focus:border-purple-400 placeholder:text-gray-500"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="email" className="text-gray-700 dark:text-gray-300 font-medium">
+                <Label
+                  htmlFor="email"
+                  className="text-gray-700 dark:text-gray-300 font-medium"
+                >
                   Email Address
                 </Label>
                 <Input
                   id="email"
+                  name="email"
+                  value={user.email}
                   type="email"
                   placeholder="sarah@devcraft.io"
+                  onChange={handleInput}
                   required
                   className="h-12 bg-gray-50/70 dark:bg-white/5 border-gray-300 dark:border-white/20 focus:border-purple-500 dark:focus:border-purple-400 placeholder:text-gray-500"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="password" className="text-gray-700 dark:text-gray-300 font-medium">
+                <Label
+                  htmlFor="password"
+                  className="text-gray-700 dark:text-gray-300 font-medium"
+                >
                   Password
                 </Label>
                 <Input
                   id="password"
+                  name="password"
+                  value={user.password}
                   type="password"
                   placeholder="Create a strong password"
+                  onChange={handleInput}
                   required
                   className="h-12 bg-gray-50/70 dark:bg-white/5 border-gray-300 dark:border-white/20 focus:border-purple-500 dark:focus:border-purple-400 placeholder:text-gray-500"
                 />
@@ -133,7 +195,8 @@ export default function SignUpPage() {
               <Button
                 size="lg"
                 className="w-full h-12 text-lg font-semibold bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-lg transform transition hover:scale-[1.02] active:scale-[0.98]"
-              >
+                 onClick={handleSubmit}
+                 >
                 <Mail className="mr-2 h-5 w-5" />
                 Sign Up with Email
               </Button>
@@ -152,10 +215,17 @@ export default function SignUpPage() {
 
               <p className="text-xs text-gray-500 dark:text-gray-500 max-w-xs mx-auto leading-relaxed">
                 By signing up, you agree to our{" "}
-                <a href="#" className="underline hover:text-gray-700 dark:hover:text-gray-300">
+                <a
+                  href="#"
+                  className="underline hover:text-gray-700 dark:hover:text-gray-300"
+                >
                   Terms of Service
-                </a>{" "}and{" "}
-                <a href="#" className="underline hover:text-gray-700 dark:hover:text-gray-300">
+                </a>{" "}
+                and{" "}
+                <a
+                  href="#"
+                  className="underline hover:text-gray-700 dark:hover:text-gray-300"
+                >
                   Privacy Policy
                 </a>
                 .

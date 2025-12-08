@@ -77,7 +77,7 @@ export default function Home() {
               </CardHeader>
               <CardFooter>
                 <Button variant="ghost" className="w-full" asChild>
-                  <Link href={`/articles/${post.id}`}>Try →</Link>
+                  <Link href="/interview">Try →</Link>
                 </Button>
               </CardFooter>
             </Card>

@@ -1,6 +1,6 @@
 // app/login/page.tsx
 "use client";
-
+import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,11 +10,54 @@ import Link from "next/link";
 import { Github, Chrome, Mail, Sparkles, Sun, Moon, Lock } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
-
+import { useAuth } from "../Auth";
+const URL = "http://localhost:5000/api/auth/login";
 export default function LoginPage() {
+const router = useRouter(); // ← Add this line
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
+  const[user,setUser]=useState({
+    email:"",
+    password:""
+  });
+  const {storeTokenInLS}=useAuth();
+   const handleInput = (e) => {
+    let name = e.target.name;
+    let value = e.target.value;
 
+    setUser({
+      ...user,
+      [name]: value,
+    });
+  };
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const response = await fetch(URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(user),
+      });
+      console.log("login form", response);
+      const res_data = await response.json();
+      if (response.ok) {
+        console.log('res from server',res_data);
+        storeTokenInLS(res_data.token);
+        console.log("login successful");
+        setUser({
+          email: "",
+          password: "",
+        });
+     router.push('/');
+      } else {
+        console.log("invalid crediential");
+      }
+    } catch (error) {
+      console.log(error);
+    }
+  };
   useEffect(() => setMounted(true), []);
 
   return (
@@ -94,6 +137,9 @@ export default function LoginPage() {
                   id="email"
                   type="email"
                   placeholder="sarah@devcraft.io"
+                  name="email"
+                  value={user.email}
+                  onChange={handleInput}
                   required
                   className="h-12 bg-gray-50/70 dark:bg-white/5 border-gray-300 dark:border-white/20 focus:border-purple-500 dark:focus:border-purple-400 placeholder:text-gray-500"
                 />
@@ -114,6 +160,9 @@ export default function LoginPage() {
                 <Input
                   id="password"
                   type="password"
+                  name="password"
+                  value={user.password}
+                  onChange={handleInput}
                   placeholder="Enter your password"
                   required
                   className="h-12 bg-gray-50/70 dark:bg-white/5 border-gray-300 dark:border-white/20 focus:border-purple-500 dark:focus:border-purple-400 placeholder:text-gray-500"
@@ -130,7 +179,9 @@ export default function LoginPage() {
               <Button
                 size="lg"
                 className="w-full h-12 text-lg font-semibold bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-lg transform transition hover:scale-[1.02] active:scale-[0.98]"
-              >
+                 
+                 onClick={handleSubmit}
+                 >
                 <Mail className="mr-2 h-5 w-5" />
                 Log In with Email
               </Button>

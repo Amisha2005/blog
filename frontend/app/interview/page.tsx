@@ -6,15 +6,26 @@ import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Mic, MicOff, Send, Bot, Video, VideoOff, Sparkles } from "lucide-react";
+import {
+  Mic,
+  MicOff,
+  Send,
+  Bot,
+  Video,
+  VideoOff,
+  Sparkles,
+} from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 
 export default function InterviewRoom() {
   const [interviewStarted, setInterviewStarted] = useState(false);
-  const [messages, setMessages] = useState<Array<{ role: "ai" | "user"; content: string }>>([
+  const [messages, setMessages] = useState<
+    Array<{ role: "ai" | "user"; content: string }>
+  >([
     {
       role: "ai",
-      content: "Hello! I'm Nova, your AI interviewer. Click 'Start Interview' to begin your live technical round.",
+      content:
+        "Hello! I'm Nova, your AI interviewer. Click 'Start Interview' to begin your live technical round.",
     },
   ]);
   const [input, setInput] = useState("");
@@ -41,16 +52,26 @@ export default function InterviewRoom() {
       setIsMicOn(true);
       setInterviewStarted(true);
 
-      if (videoRef.current) {
+      if (videoRef.current && mediaStream) {
         videoRef.current.srcObject = mediaStream;
         videoRef.current.play().catch(console.error);
+        videoRef.current.play().catch((err) => {
+          console.error("Play failed:", err);
+          alert(
+            "Camera loaded but video blocked. Try allowing autoplay in browser settings."
+          );
+        });
       }
 
       setTimeout(() => {
-        setMessages(prev => [...prev, {
-          role: "ai",
-          content: "Camera & mic connected! Let's start.\n\nQuestion 1: Explain the difference between React Server Components and Client Components.",
-        }]);
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "ai",
+            content:
+              "Camera & mic connected! Let's start.\n\nQuestion 1: Explain the difference between React Server Components and Client Components.",
+          },
+        ]);
       }, 1500);
     } catch (err) {
       alert("Camera/microphone access denied. Please allow permissions.");
@@ -81,23 +102,26 @@ export default function InterviewRoom() {
   // Send message
   const sendMessage = () => {
     if (!input.trim()) return;
-    setMessages(prev => [...prev, { role: "user", content: input }]);
+    setMessages((prev) => [...prev, { role: "user", content: input }]);
     setInput("");
 
     setTimeout(() => {
-      setMessages(prev => [...prev, {
-        role: "ai",
-        content: "Great answer! Next question coming up...",
-      }]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "ai",
+          content: "Great answer! Next question coming up...",
+        },
+      ]);
     }, 2000);
   };
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      stream?.getTracks().forEach(track => track.stop());
+      stream?.getTracks().forEach((track) => track.stop());
     };
-  }, [stream]);
+  }, []);
 
   // Pre-interview screen
   if (!interviewStarted) {
@@ -110,7 +134,9 @@ export default function InterviewRoom() {
           <h1 className="text-6xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
             AI Interview Room
           </h1>
-          <p className="text-xl text-muted-foreground">Live video + voice required</p>
+          <p className="text-xl text-muted-foreground">
+            Live video + voice required
+          </p>
           <Button
             size="lg"
             onClick={startInterview}
@@ -144,7 +170,11 @@ export default function InterviewRoom() {
               onClick={toggleCamera}
               className="gap-2"
             >
-              {isCameraOn ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
+              {isCameraOn ? (
+                <Video className="h-5 w-5" />
+              ) : (
+                <VideoOff className="h-5 w-5" />
+              )}
               {isCameraOn ? "Camera On" : "Camera Off"}
             </Button>
 
@@ -153,7 +183,11 @@ export default function InterviewRoom() {
               size="lg"
               onClick={toggleMic}
             >
-              {isMicOn ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
+              {isMicOn ? (
+                <Mic className="h-5 w-5" />
+              ) : (
+                <MicOff className="h-5 w-5" />
+              )}
             </Button>
           </div>
         </div>
@@ -170,27 +204,43 @@ export default function InterviewRoom() {
                 </Avatar>
                 <div>
                   <p className="font-bold text-lg">Nova AI Interviewer</p>
-                  <p className="text-sm text-muted-foreground">Real-time evaluation</p>
+                  <p className="text-sm text-muted-foreground">
+                    Real-time evaluation
+                  </p>
                 </div>
               </div>
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
               {messages.map((msg, i) => (
-                <div key={i} className={`flex gap-4 ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                <div
+                  key={i}
+                  className={`flex gap-4 ${
+                    msg.role === "user" ? "justify-end" : "justify-start"
+                  }`}
+                >
                   {msg.role === "ai" && (
                     <Avatar>
-                      <AvatarFallback className="bg-gradient-to-br from-purple-600 to-pink-600 text-white">N</AvatarFallback>
+                      <AvatarFallback className="bg-gradient-to-br from-purple-600 to-pink-600 text-white">
+                        N
+                      </AvatarFallback>
                     </Avatar>
                   )}
-                  <div className={`max-w-xl ${msg.role === "user" ? "text-right" : ""}`}>
-                    <div className={`
+                  <div
+                    className={`max-w-xl ${
+                      msg.role === "user" ? "text-right" : ""
+                    }`}
+                  >
+                    <div
+                      className={`
                       inline-block px-6 py-4 rounded-2xl shadow-lg text-lg whitespace-pre-line
-                      ${msg.role === "ai"
-                        ? "bg-purple-50 dark:bg-purple-900/40 border border-purple-200/50"
-                        : "bg-gradient-to-r from-blue-600 to-cyan-600 text-white"
+                      ${
+                        msg.role === "ai"
+                          ? "bg-purple-50 dark:bg-purple-900/40 border border-purple-200/50"
+                          : "bg-gradient-to-r from-blue-600 to-cyan-600 text-white"
                       }
-                    `}>
+                    `}
+                    >
                       {msg.content}
                     </div>
                   </div>
@@ -200,7 +250,9 @@ export default function InterviewRoom() {
               {/* AI typing */}
               <div className="flex gap-4">
                 <Avatar>
-                  <AvatarFallback className="bg-gradient-to-br from-purple-600 to-pink-600 text-white">N</AvatarFallback>
+                  <AvatarFallback className="bg-gradient-to-br from-purple-600 to-pink-600 text-white">
+                    N
+                  </AvatarFallback>
                 </Avatar>
                 <div className="bg-gray-100 dark:bg-white/10 rounded-2xl px-6 py-4">
                   <div className="flex gap-2">
@@ -214,8 +266,16 @@ export default function InterviewRoom() {
 
             <div className="p-6 border-t">
               <div className="flex gap-4 items-end">
-                <Button size="lg" variant={isMicOn ? "outline" : "destructive"} onClick={toggleMic}>
-                  {isMicOn ? <Mic className="h-6 w-6" /> : <MicOff className="h-6 w-6" />}
+                <Button
+                  size="lg"
+                  variant={isMicOn ? "outline" : "destructive"}
+                  onClick={toggleMic}
+                >
+                  {isMicOn ? (
+                    <Mic className="h-6 w-6" />
+                  ) : (
+                    <MicOff className="h-6 w-6" />
+                  )}
                 </Button>
                 <Textarea
                   placeholder="Type your answer here..."
@@ -242,23 +302,39 @@ export default function InterviewRoom() {
           </Card>
 
           {/* RIGHT: Live Video */}
+          {/* DIAGNOSTIC VIDEO — WILL PROVE CAMERA WORKS */}
           <div className="space-y-6">
-            <Card className="rounded-2xl overflow-hidden shadow-2xl">
-              <div className="relative aspect-video bg-black">
+            <Card className="rounded-2xl overflow-hidden shadow-2xl bg-gray-900">
+              <div className="relative aspect-video">
+                {/* THIS IS THE TEST VIDEO */}
                 <video
                   ref={videoRef}
                   autoPlay
                   playsInline
                   muted
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-cover scale-x-[-1] border-8 border-green-500"
+                  style={{ background: "#ff00ff" }} // bright magenta so you KNOW it's the video
                 />
-                <div className="absolute bottom-4 left-4">
-                  <Badge className="bg-white text-black font-bold px-4 py-1">YOU • LIVE</Badge>
+
+                {/* DEBUG OVERLAYS — YOU WILL SEE THESE */}
+                <div className="absolute top-4 left-4 z-50 bg-yellow-500 text-black px-6 py-3 rounded-lg font-bold text-xl shadow-2xl">
+                  CAMERA IS ACTIVE
                 </div>
-                <div className="absolute top-4 right-4 bg-red-600 text-white px-4 py-2 rounded-full text-sm font-bold flex items-center gap-2">
-                  <div className="w-3 h-3 bg-white rounded-full animate-pulse" />
-                  RECORDING
+                <div className="absolute bottom-4 left-4 z-50 bg-green-500 text-white px-6 py-3 rounded-lg font-bold text-xl shadow-2xl">
+                  STREAM: {stream ? "CONNECTED" : "NO STREAM"}
                 </div>
+                <div className="absolute bottom-4 right-4 z-50 bg-red-500 text-white px-6 py-3 rounded-lg font-bold text-xl shadow-2xl">
+                  TRACKS: {stream?.getVideoTracks().length || 0}
+                </div>
+
+                {/* Camera off overlay */}
+                {!isCameraOn && (
+                  <div className="absolute inset-0 bg-black/90 flex items-center justify-center z-40">
+                    <p className="text-white text-3xl font-bold">
+                      CAMERA MANUALLY TURNED OFF
+                    </p>
+                  </div>
+                )}
               </div>
             </Card>
 
@@ -278,9 +354,20 @@ export default function InterviewRoom() {
                   </div>
                 </div>
                 <div className="text-sm space-y-2">
-                  <div className="flex justify-between"><span className="text-muted-foreground">Clarity</span><span className="font-medium">Excellent</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Structure</span><span className="font-medium">Strong</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Depth</span><span className="font-medium text-purple-600">Advanced</span></div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Clarity</span>
+                    <span className="font-medium">Excellent</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Structure</span>
+                    <span className="font-medium">Strong</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Depth</span>
+                    <span className="font-medium text-purple-600">
+                      Advanced
+                    </span>
+                  </div>
                 </div>
               </div>
             </Card>
