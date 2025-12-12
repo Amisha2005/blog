@@ -171,7 +171,7 @@ export default function ArticlesPage() {
                   </span>
                 </div>
                 <Button variant="ghost" size="sm" asChild>
-                  <Link href="/interview">
+                  <Link href={`/interview?topic=${encodeURIComponent(post.title)}`}>
                     try →
                   </Link>
                 </Button>

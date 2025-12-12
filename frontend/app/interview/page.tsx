@@ -1,6 +1,4 @@
-// app/interview/room/page.tsx
 "use client";
-
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -14,28 +12,94 @@ import {
   Video,
   VideoOff,
   Sparkles,
+  MoveRight,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
+
+interface Message {
+  text: string;
+  isBot: boolean;
+}
 
 export default function InterviewRoom() {
+  const searchParams = useSearchParams();
+  const selectedTopic = searchParams.get("topic");
   const [interviewStarted, setInterviewStarted] = useState(false);
-  const [messages, setMessages] = useState<
-    Array<{ role: "ai" | "user"; content: string }>
-  >([
+  const [messages, setMessages] = useState<Message[]>([
     {
-      role: "ai",
-      content:
-        "Hello! I'm Nova, your AI interviewer. Click 'Start Interview' to begin your live technical round.",
+      text: "Welcome! Please choose an interview topic to begin:",
+      isBot: true,
     },
   ]);
   const [input, setInput] = useState("");
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [isCameraOn, setIsCameraOn] = useState(true);
   const [isMicOn, setIsMicOn] = useState(true);
-
   const videoRef = useRef<HTMLVideoElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (selectedTopic && !interviewStarted) {
+      // Update message
+      const cleanTopic = decodeURIComponent(selectedTopic);
+      setMessages([
+        {
+          text: `Great! You've selected the topic:\n\n**"${cleanTopic}"**\n\nI'll ask you interview questions about this. Please allow camera & mic to begin!`,
+          isBot: true,
+        },
+      ]);
 
-  // Start camera + mic
+      // Optionally auto-start camera after permission
+      // Or just show the start button as normal
+    }
+  }, [selectedTopic, interviewStarted]);
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const sendMessage = async (text: string) => {
+    const userMsg = text.trim();
+    if (!userMsg) return;
+
+    setMessages((prev) => [...prev, { text: userMsg, isBot: false }]);
+    setInput(""); // Clear input immediately
+
+    try {
+      const res = await fetch("http://localhost:5000/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat: userMsg,
+          topic: selectedTopic ? decodeURIComponent(selectedTopic) : null,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setMessages((prev) => [...prev, { text: data.reply, isBot: true }]);
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          { text: "Error: Server issue.", isBot: true },
+        ]);
+      }
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        { text: "Network error. Check backend.", isBot: true },
+      ]);
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    sendMessage(input);
+  };
+
   const startInterview = async () => {
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
@@ -52,34 +116,16 @@ export default function InterviewRoom() {
       setIsMicOn(true);
       setInterviewStarted(true);
 
-      if (videoRef.current && mediaStream) {
+      if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
-        videoRef.current.play().catch(console.error);
-        videoRef.current.play().catch((err) => {
-          console.error("Play failed:", err);
-          alert(
-            "Camera loaded but video blocked. Try allowing autoplay in browser settings."
-          );
-        });
+        await videoRef.current.play();
       }
-
-      setTimeout(() => {
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "ai",
-            content:
-              "Camera & mic connected! Let's start.\n\nQuestion 1: Explain the difference between React Server Components and Client Components.",
-          },
-        ]);
-      }, 1500);
     } catch (err) {
-      alert("Camera/microphone access denied. Please allow permissions.");
-      console.error(err);
+      console.error("Media access failed:", err);
+      alert("Failed to access camera/mic. Please allow permissions.");
     }
   };
 
-  // Toggle Camera (only works after stream exists)
   const toggleCamera = () => {
     if (!stream) return;
     const videoTrack = stream.getVideoTracks()[0];
@@ -89,7 +135,6 @@ export default function InterviewRoom() {
     }
   };
 
-  // Toggle Mic
   const toggleMic = () => {
     if (!stream) return;
     const audioTrack = stream.getAudioTracks()[0];
@@ -99,29 +144,12 @@ export default function InterviewRoom() {
     }
   };
 
-  // Send message
-  const sendMessage = () => {
-    if (!input.trim()) return;
-    setMessages((prev) => [...prev, { role: "user", content: input }]);
-    setInput("");
-
-    setTimeout(() => {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "ai",
-          content: "Great answer! Next question coming up...",
-        },
-      ]);
-    }, 2000);
-  };
-
-  // Cleanup on unmount
+  // Cleanup streams on unmount
   useEffect(() => {
     return () => {
       stream?.getTracks().forEach((track) => track.stop());
     };
-  }, []);
+  }, [stream]);
 
   // Pre-interview screen
   if (!interviewStarted) {
@@ -211,15 +239,14 @@ export default function InterviewRoom() {
               </div>
             </div>
 
+            {/* Messages Area */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {messages.map((msg, i) => (
+              {messages.map((msg, index) => (
                 <div
-                  key={i}
-                  className={`flex gap-4 ${
-                    msg.role === "user" ? "justify-end" : "justify-start"
-                  }`}
+                  key={index}
+                  className={`flex gap-4 ${msg.isBot ? "" : "justify-end"}`}
                 >
-                  {msg.role === "ai" && (
+                  {msg.isBot && (
                     <Avatar>
                       <AvatarFallback className="bg-gradient-to-br from-purple-600 to-pink-600 text-white">
                         N
@@ -228,45 +255,30 @@ export default function InterviewRoom() {
                   )}
                   <div
                     className={`max-w-xl ${
-                      msg.role === "user" ? "text-right" : ""
-                    }`}
+                      msg.isBot
+                        ? "bg-gray-100 dark:bg-white/10"
+                        : "bg-gradient-to-r from-purple-600 to-pink-600 text-white"
+                    } px-6 py-4 rounded-2xl shadow-lg text-lg whitespace-pre-line`}
                   >
-                    <div
-                      className={`
-                      inline-block px-6 py-4 rounded-2xl shadow-lg text-lg whitespace-pre-line
-                      ${
-                        msg.role === "ai"
-                          ? "bg-purple-50 dark:bg-purple-900/40 border border-purple-200/50"
-                          : "bg-gradient-to-r from-blue-600 to-cyan-600 text-white"
-                      }
-                    `}
-                    >
-                      {msg.content}
-                    </div>
+                    {msg.text}
                   </div>
+                  {!msg.isBot && (
+                    <Avatar>
+                      <AvatarFallback className="bg-gray-400 text-white">
+                        U
+                      </AvatarFallback>
+                    </Avatar>
+                  )}
                 </div>
               ))}
-
-              {/* AI typing */}
-              <div className="flex gap-4">
-                <Avatar>
-                  <AvatarFallback className="bg-gradient-to-br from-purple-600 to-pink-600 text-white">
-                    N
-                  </AvatarFallback>
-                </Avatar>
-                <div className="bg-gray-100 dark:bg-white/10 rounded-2xl px-6 py-4">
-                  <div className="flex gap-2">
-                    <div className="w-3 h-3 bg-gray-500 rounded-full animate-bounce" />
-                    <div className="w-3 h-3 bg-gray-500 rounded-full animate-bounce delay-100" />
-                    <div className="w-3 h-3 bg-gray-500 rounded-full animate-bounce delay-200" />
-                  </div>
-                </div>
-              </div>
+              <div ref={messagesEndRef} />
             </div>
 
+            {/* Input Area */}
             <div className="p-6 border-t">
-              <div className="flex gap-4 items-end">
+              <form onSubmit={handleSubmit} className="flex gap-4 items-end">
                 <Button
+                  type="button"
                   size="lg"
                   variant={isMicOn ? "outline" : "destructive"}
                   onClick={toggleMic}
@@ -281,42 +293,32 @@ export default function InterviewRoom() {
                   placeholder="Type your answer here..."
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      sendMessage();
-                    }
-                  }}
-                  className="min-h-32 resize-none"
+                  className="min-h-32 resize-none flex-1"
                 />
                 <Button
+                  type="submit"
                   size="lg"
-                  onClick={sendMessage}
                   disabled={!input.trim()}
                   className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
                 >
                   <Send className="h-6 w-6" />
                 </Button>
-              </div>
+              </form>
             </div>
           </Card>
 
-          {/* RIGHT: Live Video */}
-          {/* DIAGNOSTIC VIDEO — WILL PROVE CAMERA WORKS */}
+          {/* RIGHT: Live Video + Feedback */}
           <div className="space-y-6">
             <Card className="rounded-2xl overflow-hidden shadow-2xl bg-gray-900">
-              <div className="relative aspect-video">
-                {/* THIS IS THE TEST VIDEO */}
+              <div className="relative aspect-video" style={{ height: "34pc" }}>
                 <video
                   ref={videoRef}
                   autoPlay
                   playsInline
                   muted
-                  className="w-full h-full object-cover scale-x-[-1] border-8 border-green-500"
-                  style={{ background: "#ff00ff" }} // bright magenta so you KNOW it's the video
+                  className="w-full h-full object-cover scale-x-[-1]"
                 />
-
-                {/* DEBUG OVERLAYS — YOU WILL SEE THESE */}
+                {/* Debug Overlays (you can remove these in production) */}
                 <div className="absolute top-4 left-4 z-50 bg-yellow-500 text-black px-6 py-3 rounded-lg font-bold text-xl shadow-2xl">
                   CAMERA IS ACTIVE
                 </div>
@@ -337,43 +339,15 @@ export default function InterviewRoom() {
                 )}
               </div>
             </Card>
-
-            <Card className="p-6 bg-white/90 dark:bg-black/70 backdrop-blur-xl">
-              <h3 className="text-lg font-bold flex items-center gap-2 mb-4">
-                <Sparkles className="h-6 w-6 text-purple-600 dark:text-purple-400" />
-                Live AI Feedback
-              </h3>
-              <div className="space-y-4">
-                <div>
-                  <div className="flex justify-between mb-2">
-                    <span>Confidence Score</span>
-                    <span className="font-bold text-green-600">92%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 dark:bg-white/20 rounded-full h-4">
-                    <div className="bg-gradient-to-r from-green-500 to-emerald-500 h-4 rounded-full w-[92%]" />
-                  </div>
-                </div>
-                <div className="text-sm space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Clarity</span>
-                    <span className="font-medium">Excellent</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Structure</span>
-                    <span className="font-medium">Strong</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Depth</span>
-                    <span className="font-medium text-purple-600">
-                      Advanced
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </Card>
           </div>
         </div>
       </div>
+
+      <button className="rounded-lg text-black ml-350 bg-slate-500 hover:bg-slate-600 w-20 h-10 fixed bottom-8 right-8 flex items-center justify-center shadow-lg pl-2">
+        Exit
+        <MoveRight className="ml-5" />
+      </button>
+    
     </div>
   );
 }
