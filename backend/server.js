@@ -6,11 +6,7 @@ const connectDb = require("./utils/db");
 require("dotenv").config();
 const cors = require("cors");
 const authRoute = require("./Router/auth-router");
-// const productRoutes = require("./Router/product-router");
-// const adminRoute = require('./Router/admin-router');
-// const contactRoute = require('./Router/contact-router');
-// const BuyRoute = require('./Router/Buy-router');
-// const AddCard = require('./Router/AddCard');
+
 
 const corsOptions = {
   origin: "http://localhost:3000",
@@ -39,6 +35,11 @@ Start with easy to hard questions if you think that the client answer your quest
 every time it refresh or open interview give new question or shuffle the question.
 Start asking professional questions as the time progress.
 Do not ask repeated questions. 
+If the user message is short or says 'next', 'continue', or similar, just ask the next question without feedback.
+If the candidate says skip the question, just ask the next question.
+If the candidate take more than 1 min to answer the question, remind him/her to answer quickly and ask the next question and tell them to write "skip" for next question.
+If the candidate didn't says skip wait for another 1 min to answer if still candidate doesn't give the answer in 1min ask next question.
+If candidate didn't give any answer for about 3min quit the interview and give there feedback in % form.
 You don't have to give feedback after every question in % form, only when the candidate says "done" or "stop" to end the interview.
 If candidate says "stop" or "done" to end the interview then give him/her feedback in % form and say "Interview complete"
 Only correct the answer if it is factually wrong in short.
@@ -55,6 +56,7 @@ If the candidate says "done" or "stop", say "Interview complete. Thank you!" and
 
 // Updated POST route with memory
 app.post("/api/chat", async (req, res) => {
+  console.log(process.env.GROQ_API_KEY);
   try {
     const userMessage = req.body.chat?.trim() || req.body?.trim();
 

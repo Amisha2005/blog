@@ -11,7 +11,6 @@ import {
   Bot,
   Video,
   VideoOff,
-  Sparkles,
   MoveRight,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
@@ -25,6 +24,8 @@ interface Message {
 export default function InterviewRoom() {
   const searchParams = useSearchParams();
   const selectedTopic = searchParams.get("topic");
+  const [questionStartTime, setQuestionStartTime] = useState<number | null>(null);
+  const [typingTimerId, setTypingTimerId] = useState<NodeJS.Timeout | null>(null);
   const [interviewStarted, setInterviewStarted] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -36,11 +37,14 @@ export default function InterviewRoom() {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [isCameraOn, setIsCameraOn] = useState(true);
   const [isMicOn, setIsMicOn] = useState(true);
+  const [isListening, setIsListening] = useState(false); // NEW: Speech recognition state
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const recognitionRef = useRef<any>(null); // SpeechRecognition instance
+
   useEffect(() => {
     if (selectedTopic && !interviewStarted) {
-      // Update message
       const cleanTopic = decodeURIComponent(selectedTopic);
       setMessages([
         {
@@ -48,11 +52,9 @@ export default function InterviewRoom() {
           isBot: true,
         },
       ]);
-
-      // Optionally auto-start camera after permission
-      // Or just show the start button as normal
     }
   }, [selectedTopic, interviewStarted]);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -61,12 +63,82 @@ export default function InterviewRoom() {
     scrollToBottom();
   }, [messages]);
 
+  // === Speech Recognition Setup ===
+  useEffect(() => {
+    if (!("SpeechRecognition" in window || "webkitSpeechRecognition" in window)) {
+      console.warn("Speech recognition not supported in this browser.");
+      return;
+    }
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+
+    let finalTranscript = "";
+
+    recognition.onresult = (event: any) => {
+      let interimTranscript = "";
+
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcriptPart = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += transcriptPart + " ";
+        } else {
+          interimTranscript += transcriptPart;
+        }
+      }
+
+      setInput(finalTranscript.trim() + " " + interimTranscript);
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error("Speech recognition error:", event.error);
+      setIsListening(false);
+      if (event.error === "no-speech") {
+        // Optional: alert("No speech detected. Try again.");
+      }
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognitionRef.current = recognition;
+
+    return () => {
+      recognition.stop();
+    };
+  }, []);
+
+  const toggleVoiceInput = () => {
+    if (!recognitionRef.current) {
+      alert("Speech recognition is not supported in your browser.");
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+    } else {
+      recognitionRef.current.start();
+      setIsListening(true);
+    }
+  };
+
   const sendMessage = async (text: string) => {
     const userMsg = text.trim();
     if (!userMsg) return;
 
+    if (typingTimerId) {
+      clearTimeout(typingTimerId);
+      setTypingTimerId(null);
+    }
+
     setMessages((prev) => [...prev, { text: userMsg, isBot: false }]);
-    setInput(""); // Clear input immediately
+    setInput("");
 
     try {
       const res = await fetch("http://localhost:5000/api/chat", {
@@ -80,18 +152,24 @@ export default function InterviewRoom() {
 
       if (res.ok) {
         const data = await res.json();
-        setMessages((prev) => [...prev, { text: data.reply, isBot: true }]);
-      } else {
-        setMessages((prev) => [
-          ...prev,
-          { text: "Error: Server issue.", isBot: true },
-        ]);
+
+        setMessages((prev) => {
+          const timer = setTimeout(() => {
+            setMessages((m) => [
+              ...m,
+              { text: "Taking a bit long? Here's the next question to keep momentum!", isBot: true },
+            ]);
+            sendMessage("continue");
+          }, 60000);
+
+          setTypingTimerId(timer);
+          setQuestionStartTime(Date.now());
+
+          return [...prev, { text: data.reply, isBot: true }];
+        });
       }
     } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        { text: "Network error. Check backend.", isBot: true },
-      ]);
+      console.error("Error sending message:", err);
     }
   };
 
@@ -103,11 +181,7 @@ export default function InterviewRoom() {
   const startInterview = async () => {
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          facingMode: "user",
-        },
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
         audio: true,
       });
 
@@ -115,14 +189,9 @@ export default function InterviewRoom() {
       setIsCameraOn(true);
       setIsMicOn(true);
       setInterviewStarted(true);
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
-        await videoRef.current.play();
-      }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Media access failed:", err);
-      alert("Failed to access camera/mic. Please allow permissions.");
+      alert(`Failed to access camera/mic: ${err.message || "Permission denied"}`);
     }
   };
 
@@ -144,14 +213,21 @@ export default function InterviewRoom() {
     }
   };
 
-  // Cleanup streams on unmount
+  // Video stream assignment
+  useEffect(() => {
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream;
+      videoRef.current.play().catch((err) => console.error("Video play failed:", err));
+    }
+  }, [stream]);
+
+  // Cleanup
   useEffect(() => {
     return () => {
       stream?.getTracks().forEach((track) => track.stop());
     };
   }, [stream]);
 
-  // Pre-interview screen
   if (!interviewStarted) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-purple-50 dark:from-slate-950 dark:to-purple-950/60 flex items-center justify-center p-6">
@@ -162,9 +238,7 @@ export default function InterviewRoom() {
           <h1 className="text-6xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
             AI Interview Room
           </h1>
-          <p className="text-xl text-muted-foreground">
-            Live video + voice required
-          </p>
+          <p className="text-xl text-muted-foreground">Live video + voice required</p>
           <Button
             size="lg"
             onClick={startInterview}
@@ -181,7 +255,6 @@ export default function InterviewRoom() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-purple-50 dark:from-slate-950 dark:to-purple-950/40">
       <div className="container max-w-7xl mx-auto p-6">
-        {/* Header */}
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-4">
             <Badge className="px-5 py-2 text-lg bg-green-100 text-green-700 dark:bg-green-900/50">
@@ -192,30 +265,13 @@ export default function InterviewRoom() {
           </div>
 
           <div className="flex gap-3">
-            <Button
-              variant="outline"
-              size="lg"
-              onClick={toggleCamera}
-              className="gap-2"
-            >
-              {isCameraOn ? (
-                <Video className="h-5 w-5" />
-              ) : (
-                <VideoOff className="h-5 w-5" />
-              )}
+            <Button variant="outline" size="lg" onClick={toggleCamera} className="gap-2">
+              {isCameraOn ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
               {isCameraOn ? "Camera On" : "Camera Off"}
             </Button>
 
-            <Button
-              variant={isMicOn ? "outline" : "destructive"}
-              size="lg"
-              onClick={toggleMic}
-            >
-              {isMicOn ? (
-                <Mic className="h-5 w-5" />
-              ) : (
-                <MicOff className="h-5 w-5" />
-              )}
+            <Button variant={isMicOn ? "outline" : "destructive"} size="lg" onClick={toggleMic}>
+              {isMicOn ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
             </Button>
           </div>
         </div>
@@ -232,20 +288,14 @@ export default function InterviewRoom() {
                 </Avatar>
                 <div>
                   <p className="font-bold text-lg">Nova AI Interviewer</p>
-                  <p className="text-sm text-muted-foreground">
-                    Real-time evaluation
-                  </p>
+                  <p className="text-sm text-muted-foreground">Real-time evaluation</p>
                 </div>
               </div>
             </div>
 
-            {/* Messages Area */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
               {messages.map((msg, index) => (
-                <div
-                  key={index}
-                  className={`flex gap-4 ${msg.isBot ? "" : "justify-end"}`}
-                >
+                <div key={index} className={`flex gap-4 ${msg.isBot ? "" : "justify-end"}`}>
                   {msg.isBot && (
                     <Avatar>
                       <AvatarFallback className="bg-gradient-to-br from-purple-600 to-pink-600 text-white">
@@ -264,9 +314,7 @@ export default function InterviewRoom() {
                   </div>
                   {!msg.isBot && (
                     <Avatar>
-                      <AvatarFallback className="bg-gray-400 text-white">
-                        U
-                      </AvatarFallback>
+                      <AvatarFallback className="bg-gray-400 text-white">U</AvatarFallback>
                     </Avatar>
                   )}
                 </div>
@@ -274,27 +322,40 @@ export default function InterviewRoom() {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Input Area */}
+            {/* Input Area - Now with Voice Button */}
             <div className="p-6 border-t">
               <form onSubmit={handleSubmit} className="flex gap-4 items-end">
+                {/* Voice Input Button */}
+                <Button
+                  type="button"
+                  size="lg"
+                  variant={isListening ? "default" : "outline"}
+                  onClick={toggleVoiceInput}
+                  className={`gap-2 ${isListening ? "bg-red-600 hover:bg-red-700 animate-pulse" : ""}`}
+                >
+                  <Mic className="h-6 w-6" />
+                  {isListening ? "Listening..." : "Speak"}
+                </Button>
+
+                {/* Mic Toggle */}
                 <Button
                   type="button"
                   size="lg"
                   variant={isMicOn ? "outline" : "destructive"}
                   onClick={toggleMic}
                 >
-                  {isMicOn ? (
-                    <Mic className="h-6 w-6" />
-                  ) : (
-                    <MicOff className="h-6 w-6" />
-                  )}
+                  {isMicOn ? <Mic className="h-6 w-6" /> : <MicOff className="h-6 w-6" />}
                 </Button>
+
+                {/* Text Input */}
                 <Textarea
-                  placeholder="Type your answer here..."
+                  placeholder="Type your answer or click 'Speak' to dictate..."
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   className="min-h-32 resize-none flex-1"
                 />
+
+                {/* Send Button */}
                 <Button
                   type="submit"
                   size="lg"
@@ -304,10 +365,17 @@ export default function InterviewRoom() {
                   <Send className="h-6 w-6" />
                 </Button>
               </form>
+
+              {/* Listening Feedback */}
+              {isListening && (
+                <p className="text-center mt-4 text-green-600 font-semibold animate-pulse">
+                  🎤 Listening... Speak clearly!
+                </p>
+              )}
             </div>
           </Card>
 
-          {/* RIGHT: Live Video + Feedback */}
+          {/* RIGHT: Video */}
           <div className="space-y-6">
             <Card className="rounded-2xl overflow-hidden shadow-2xl bg-gray-900">
               <div className="relative aspect-video" style={{ height: "34pc" }}>
@@ -318,7 +386,7 @@ export default function InterviewRoom() {
                   muted
                   className="w-full h-full object-cover scale-x-[-1]"
                 />
-                {/* Debug Overlays (you can remove these in production) */}
+                {/* Debug overlays - remove in production */}
                 <div className="absolute top-4 left-4 z-50 bg-yellow-500 text-black px-6 py-3 rounded-lg font-bold text-xl shadow-2xl">
                   CAMERA IS ACTIVE
                 </div>
@@ -329,12 +397,9 @@ export default function InterviewRoom() {
                   TRACKS: {stream?.getVideoTracks().length || 0}
                 </div>
 
-                {/* Camera off overlay */}
                 {!isCameraOn && (
                   <div className="absolute inset-0 bg-black/90 flex items-center justify-center z-40">
-                    <p className="text-white text-3xl font-bold">
-                      CAMERA MANUALLY TURNED OFF
-                    </p>
+                    <p className="text-white text-3xl font-bold">CAMERA MANUALLY TURNED OFF</p>
                   </div>
                 )}
               </div>
@@ -343,11 +408,10 @@ export default function InterviewRoom() {
         </div>
       </div>
 
-      <button className="rounded-lg text-black ml-350 bg-slate-500 hover:bg-slate-600 w-20 h-10 fixed bottom-8 right-8 flex items-center justify-center shadow-lg pl-2">
+      <button className="rounded-lg text-black bg-slate-500 hover:bg-slate-600 w-20 h-10 fixed bottom-8 right-8 flex items-center justify-center shadow-lg pl-2">
         Exit
         <MoveRight className="ml-5" />
       </button>
-    
     </div>
   );
 }
