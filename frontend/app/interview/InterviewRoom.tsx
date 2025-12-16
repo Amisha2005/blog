@@ -1,4 +1,4 @@
-"use client"
+"use client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -12,7 +12,7 @@ import {
   Video,
   VideoOff,
   MoveRight,
-  Sparkles
+  Sparkles,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
@@ -21,12 +21,19 @@ interface Message {
   text: string;
   isBot: boolean;
 }
-
-export default function InterviewRoom() {
-  const searchParams = useSearchParams();
-  const selectedTopic = searchParams.get("topic");
-  const [questionStartTime, setQuestionStartTime] = useState<number | null>(null);
-  const [typingTimerId, setTypingTimerId] = useState<NodeJS.Timeout | null>(null);
+interface InterviewRoomProps {
+  selectedTopic: string | null; // Important: allow null
+}
+export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
+  //   const searchParams = useSearchParams();
+  //   const selectedTopic = searchParams.get("topic");
+  const cleanTopic = selectedTopic ? decodeURIComponent(selectedTopic) : null;
+  const [questionStartTime, setQuestionStartTime] = useState<number | null>(
+    null
+  );
+  const [typingTimerId, setTypingTimerId] = useState<NodeJS.Timeout | null>(
+    null
+  );
   const [interviewStarted, setInterviewStarted] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -44,9 +51,19 @@ export default function InterviewRoom() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null); // SpeechRecognition instance
 
+  //   useEffect(() => {
+  //     if (selectedTopic && !interviewStarted) {
+  //       const cleanTopic = decodeURIComponent(selectedTopic);
+  //       setMessages([
+  //         {
+  //           text: `Great! You've selected the topic:\n\n**"${cleanTopic}"**\n\nI'll ask you interview questions about this. Please allow camera & mic to begin!`,
+  //           isBot: true,
+  //         },
+  //       ]);
+  //     }
+  //   }, [selectedTopic, interviewStarted]);
   useEffect(() => {
-    if (selectedTopic && !interviewStarted) {
-      const cleanTopic = decodeURIComponent(selectedTopic);
+    if (cleanTopic && !interviewStarted) {
       setMessages([
         {
           text: `Great! You've selected the topic:\n\n**"${cleanTopic}"**\n\nI'll ask you interview questions about this. Please allow camera & mic to begin!`,
@@ -54,7 +71,7 @@ export default function InterviewRoom() {
         },
       ]);
     }
-  }, [selectedTopic, interviewStarted]);
+  }, [cleanTopic, interviewStarted]); // ← dependency is cleanTopic, not selectedTopic
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -66,12 +83,16 @@ export default function InterviewRoom() {
 
   // === Speech Recognition Setup ===
   useEffect(() => {
-    if (!("SpeechRecognition" in window || "webkitSpeechRecognition" in window)) {
+    if (
+      !("SpeechRecognition" in window || "webkitSpeechRecognition" in window)
+    ) {
       console.warn("Speech recognition not supported in this browser.");
       return;
     }
 
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SpeechRecognition =
+      (window as any).SpeechRecognition ||
+      (window as any).webkitSpeechRecognition;
     const recognition = new SpeechRecognition();
 
     recognition.continuous = true;
@@ -147,7 +168,7 @@ export default function InterviewRoom() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           chat: userMsg,
-          topic: selectedTopic ? decodeURIComponent(selectedTopic) : null,
+          topic: cleanTopic,
         }),
       });
 
@@ -158,7 +179,10 @@ export default function InterviewRoom() {
           const timer = setTimeout(() => {
             setMessages((m) => [
               ...m,
-              { text: "Taking a bit long? Here's the next question to keep momentum!", isBot: true },
+              {
+                text: "Taking a bit long? Here's the next question to keep momentum!",
+                isBot: true,
+              },
             ]);
             sendMessage("continue");
           }, 60000);
@@ -182,7 +206,11 @@ export default function InterviewRoom() {
   const startInterview = async () => {
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode: "user",
+        },
         audio: true,
       });
 
@@ -192,7 +220,9 @@ export default function InterviewRoom() {
       setInterviewStarted(true);
     } catch (err: any) {
       console.error("Media access failed:", err);
-      alert(`Failed to access camera/mic: ${err.message || "Permission denied"}`);
+      alert(
+        `Failed to access camera/mic: ${err.message || "Permission denied"}`
+      );
     }
   };
 
@@ -218,7 +248,9 @@ export default function InterviewRoom() {
   useEffect(() => {
     if (videoRef.current && stream) {
       videoRef.current.srcObject = stream;
-      videoRef.current.play().catch((err) => console.error("Video play failed:", err));
+      videoRef.current
+        .play()
+        .catch((err) => console.error("Video play failed:", err));
     }
   }, [stream]);
 
@@ -255,11 +287,33 @@ export default function InterviewRoom() {
                 Interview Rules
               </h2>
               <ul className="space-y-5 text-lg text-gray-700 dark:text-gray-300">
-                <li className="flex gap-4"><span className="text-2xl">📹</span><div><strong>Camera must be ON</strong> throughout the interview</div></li>
-                <li className="flex gap-4"><span className="text-2xl">🎤</span><div><strong>Microphone must be ON</strong> and clear (no background noise)</div></li>
-                <li className="flex gap-4"><span className="text-2xl">👀</span><div>Keep your face clearly visible in the frame</div></li>
-                <li className="flex gap-4"><span className="text-2xl">⏰</span><div>Answer each question thoughtfully within 2-3 minutes</div></li>
-                <li className="flex gap-4"><span className="text-2xl">🚫</span><div>No external help, notes, or searching allowed</div></li>
+                <li className="flex gap-4">
+                  <span className="text-2xl">📹</span>
+                  <div>
+                    <strong>Camera must be ON</strong> throughout the interview
+                  </div>
+                </li>
+                <li className="flex gap-4">
+                  <span className="text-2xl">🎤</span>
+                  <div>
+                    <strong>Microphone must be ON</strong> and clear (no
+                    background noise)
+                  </div>
+                </li>
+                <li className="flex gap-4">
+                  <span className="text-2xl">👀</span>
+                  <div>Keep your face clearly visible in the frame</div>
+                </li>
+                <li className="flex gap-4">
+                  <span className="text-2xl">⏰</span>
+                  <div>
+                    Answer each question thoughtfully within 2-3 minutes
+                  </div>
+                </li>
+                <li className="flex gap-4">
+                  <span className="text-2xl">🚫</span>
+                  <div>No external help, notes, or searching allowed</div>
+                </li>
               </ul>
             </Card>
 
@@ -270,21 +324,41 @@ export default function InterviewRoom() {
                 Pro Tips for Success
               </h2>
               <ul className="space-y-5 text-lg text-gray-700 dark:text-gray-300">
-                <li className="flex gap-4"><span className="text-2xl">🌿</span><div>Find a quiet, well-lit room with neutral background</div></li>
-                <li className="flex gap-4"><span className="text-2xl">🪑</span><div>Sit upright, maintain eye contact with the camera</div></li>
-                <li className="flex gap-4"><span className="text-2xl">💡</span><div>Speak clearly and at a moderate pace</div></li>
-                <li className="flex gap-4"><span className="text-2xl">🧠</span><div>Use the STAR method (Situation, Task, Action, Result) for behavioral questions</div></li>
-                <li className="flex gap-4"><span className="text-2xl">😊</span><div>Smile naturally and show enthusiasm!</div></li>
+                <li className="flex gap-4">
+                  <span className="text-2xl">🌿</span>
+                  <div>Find a quiet, well-lit room with neutral background</div>
+                </li>
+                <li className="flex gap-4">
+                  <span className="text-2xl">🪑</span>
+                  <div>Sit upright, maintain eye contact with the camera</div>
+                </li>
+                <li className="flex gap-4">
+                  <span className="text-2xl">💡</span>
+                  <div>Speak clearly and at a moderate pace</div>
+                </li>
+                <li className="flex gap-4">
+                  <span className="text-2xl">🧠</span>
+                  <div>
+                    Use the STAR method (Situation, Task, Action, Result) for
+                    behavioral questions
+                  </div>
+                </li>
+                <li className="flex gap-4">
+                  <span className="text-2xl">😊</span>
+                  <div>Smile naturally and show enthusiasm!</div>
+                </li>
               </ul>
             </Card>
           </div>
 
           {/* Topic Display */}
-          {selectedTopic && (
+          {cleanTopic && (
             <div className="text-center mb-10">
-              <p className="text-xl text-muted-foreground mb-2">Your selected topic:</p>
+              <p className="text-xl text-muted-foreground mb-2">
+                Your selected topic:
+              </p>
               <Badge className="text-2xl px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white">
-                {decodeURIComponent(selectedTopic)}
+                {cleanTopic}
               </Badge>
             </div>
           )}
@@ -301,7 +375,8 @@ export default function InterviewRoom() {
             </Button>
 
             <p className="mt-6 text-lg text-muted-foreground">
-              By starting, you agree to keep camera and microphone on during the entire session.
+              By starting, you agree to keep camera and microphone on during the
+              entire session.
             </p>
           </div>
         </div>
@@ -321,13 +396,30 @@ export default function InterviewRoom() {
           </div>
 
           <div className="flex gap-3">
-            <Button variant="outline" size="lg" onClick={toggleCamera} className="gap-2">
-              {isCameraOn ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={toggleCamera}
+              className="gap-2"
+            >
+              {isCameraOn ? (
+                <Video className="h-5 w-5" />
+              ) : (
+                <VideoOff className="h-5 w-5" />
+              )}
               {isCameraOn ? "Camera On" : "Camera Off"}
             </Button>
 
-            <Button variant={isMicOn ? "outline" : "destructive"} size="lg" onClick={toggleMic}>
-              {isMicOn ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
+            <Button
+              variant={isMicOn ? "outline" : "destructive"}
+              size="lg"
+              onClick={toggleMic}
+            >
+              {isMicOn ? (
+                <Mic className="h-5 w-5" />
+              ) : (
+                <MicOff className="h-5 w-5" />
+              )}
             </Button>
           </div>
         </div>
@@ -344,14 +436,19 @@ export default function InterviewRoom() {
                 </Avatar>
                 <div>
                   <p className="font-bold text-lg">Nova AI Interviewer</p>
-                  <p className="text-sm text-muted-foreground">Real-time evaluation</p>
+                  <p className="text-sm text-muted-foreground">
+                    Real-time evaluation
+                  </p>
                 </div>
               </div>
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
               {messages.map((msg, index) => (
-                <div key={index} className={`flex gap-4 ${msg.isBot ? "" : "justify-end"}`}>
+                <div
+                  key={index}
+                  className={`flex gap-4 ${msg.isBot ? "" : "justify-end"}`}
+                >
                   {msg.isBot && (
                     <Avatar>
                       <AvatarFallback className="bg-gradient-to-br from-purple-600 to-pink-600 text-white">
@@ -370,7 +467,9 @@ export default function InterviewRoom() {
                   </div>
                   {!msg.isBot && (
                     <Avatar>
-                      <AvatarFallback className="bg-gray-400 text-white">U</AvatarFallback>
+                      <AvatarFallback className="bg-gray-400 text-white">
+                        U
+                      </AvatarFallback>
                     </Avatar>
                   )}
                 </div>
@@ -387,7 +486,11 @@ export default function InterviewRoom() {
                   size="lg"
                   variant={isListening ? "default" : "outline"}
                   onClick={toggleVoiceInput}
-                  className={`gap-2 ${isListening ? "bg-red-600 hover:bg-red-700 animate-pulse" : ""}`}
+                  className={`gap-2 ${
+                    isListening
+                      ? "bg-red-600 hover:bg-red-700 animate-pulse"
+                      : ""
+                  }`}
                 >
                   <Mic className="h-6 w-6" />
                   {isListening ? "Listening..." : "Speak"}
@@ -400,7 +503,11 @@ export default function InterviewRoom() {
                   variant={isMicOn ? "outline" : "destructive"}
                   onClick={toggleMic}
                 >
-                  {isMicOn ? <Mic className="h-6 w-6" /> : <MicOff className="h-6 w-6" />}
+                  {isMicOn ? (
+                    <Mic className="h-6 w-6" />
+                  ) : (
+                    <MicOff className="h-6 w-6" />
+                  )}
                 </Button>
 
                 {/* Text Input */}
@@ -455,7 +562,9 @@ export default function InterviewRoom() {
 
                 {!isCameraOn && (
                   <div className="absolute inset-0 bg-black/90 flex items-center justify-center z-40">
-                    <p className="text-white text-3xl font-bold">CAMERA MANUALLY TURNED OFF</p>
+                    <p className="text-white text-3xl font-bold">
+                      CAMERA MANUALLY TURNED OFF
+                    </p>
                   </div>
                 )}
               </div>
