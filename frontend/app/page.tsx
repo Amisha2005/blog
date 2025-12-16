@@ -47,7 +47,7 @@ export default function Home() {
             <span>{featuredPost.readTime}</span>
           </div>
           <Button size="lg" asChild>
-            <Link href="/articles/future-of-web">Subscribe →</Link>
+            <Link href="/articles/future-of-web">Learn how to give interview →</Link>
           </Button>
         </div>
         <div className="bg-muted rounded-2xl aspect-video lg:aspect-auto lg:h-96 border" >
