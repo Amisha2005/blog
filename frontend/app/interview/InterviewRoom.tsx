@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
 import {
   Mic,
   MicOff,
@@ -15,7 +16,6 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
-import { useSearchParams } from "next/navigation";
 
 interface Message {
   text: string;
@@ -51,22 +51,11 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null); // SpeechRecognition instance
 
-  //   useEffect(() => {
-  //     if (selectedTopic && !interviewStarted) {
-  //       const cleanTopic = decodeURIComponent(selectedTopic);
-  //       setMessages([
-  //         {
-  //           text: `Great! You've selected the topic:\n\n**"${cleanTopic}"**\n\nI'll ask you interview questions about this. Please allow camera & mic to begin!`,
-  //           isBot: true,
-  //         },
-  //       ]);
-  //     }
-  //   }, [selectedTopic, interviewStarted]);
   useEffect(() => {
     if (cleanTopic && !interviewStarted) {
       setMessages([
         {
-          text: `Great! You've selected the topic:\n\n**"${cleanTopic}"**\n\nI'll ask you interview questions about this. Please allow camera & mic to begin!`,
+          text: `Great! You've selected the topic\n\n**"${cleanTopic}"**\n\nI'll ask you interview questions about this. Please allow camera & mic to begin!.To start the interview type start.Type "start" to start interview.`,
           isBot: true,
         },
       ]);
@@ -574,7 +563,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       </div>
 
       <button className="rounded-lg text-black bg-slate-500 hover:bg-slate-600 w-20 h-10 fixed bottom-8 right-8 flex items-center justify-center shadow-lg pl-2">
-        Exit
+        <Link href="/congratulations">Exit</Link>
         <MoveRight className="ml-5" />
       </button>
     </div>
