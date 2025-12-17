@@ -55,7 +55,9 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     if (cleanTopic && !interviewStarted) {
       setMessages([
         {
-          text: `Great! You've selected the topic\n\n**"${cleanTopic}"**\n\nI'll ask you interview questions about this. Please allow camera & mic to begin!.To start the interview type start.Type "start" to start interview.`,
+          text: `Great! You've selected the topic\n\n**"${cleanTopic}"**\n\nI'll ask you interview questions about this. Please allow camera & mic to begin!.To start the interview type "start".Make sure to stay at inteview until it end itself.It will ens within 30 min.
+          If you want to stop the interview say "stop".
+          `,
           isBot: true,
         },
       ]);
@@ -538,16 +540,6 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                   muted
                   className="w-full h-full object-cover scale-x-[-1]"
                 />
-                {/* Debug overlays - remove in production */}
-                <div className="absolute top-4 left-4 z-50 bg-yellow-500 text-black px-6 py-3 rounded-lg font-bold text-xl shadow-2xl">
-                  CAMERA IS ACTIVE
-                </div>
-                <div className="absolute bottom-4 left-4 z-50 bg-green-500 text-white px-6 py-3 rounded-lg font-bold text-xl shadow-2xl">
-                  STREAM: {stream ? "CONNECTED" : "NO STREAM"}
-                </div>
-                <div className="absolute bottom-4 right-4 z-50 bg-red-500 text-white px-6 py-3 rounded-lg font-bold text-xl shadow-2xl">
-                  TRACKS: {stream?.getVideoTracks().length || 0}
-                </div>
 
                 {!isCameraOn && (
                   <div className="absolute inset-0 bg-black/90 flex items-center justify-center z-40">

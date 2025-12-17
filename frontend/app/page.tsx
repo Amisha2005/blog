@@ -87,7 +87,7 @@ export default function Home() {
         <div className="bg-muted rounded-2xl aspect-video lg:aspect-auto lg:h-96 border">
           <img
             className="rounded-2xl"
-            style={{ width: "40vw", height: "52vh" }}
+            style={{ width: "40vw", height: "72vh" }}
             src="https://media.istockphoto.com/id/1530973530/photo/software-development-concept.webp?a=1&b=1&s=612x612&w=0&k=20&c=NXxmootfVkI2C_JS5-5p06qMD_ngxJnH8BfLxnoQKP8="
           />
         </div>
