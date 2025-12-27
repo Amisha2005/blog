@@ -11,7 +11,7 @@ import { Github, Chrome, Mail, Sparkles, Sun, Moon, Lock } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 import { useAuth } from "../Auth";
-const URL = "http://localhost:5000/api/auth/login";
+const URL = "https://novatech-z95h.onrender.com/api/auth/login";
 export default function LoginPage() {
 const router = useRouter(); // ← Add this line
   const { theme, setTheme } = useTheme();

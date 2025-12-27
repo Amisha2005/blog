@@ -154,7 +154,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     setInput("");
 
     try {
-      const res = await fetch("http://localhost:5000/api/chat", {
+      const res = await fetch("https://novatech-z95h.onrender.com/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -281,30 +281,35 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                 <li className="flex gap-4">
                   <span className="text-2xl">📹</span>
                   <div>
-                    <strong>Camera must be ON</strong> throughout the interview
+                    <strong>Camera must be ON</strong> throughout the interview.
                   </div>
                 </li>
                 <li className="flex gap-4">
                   <span className="text-2xl">🎤</span>
                   <div>
                     <strong>Microphone must be ON</strong> and clear (no
-                    background noise)
+                    background noise).
                   </div>
                 </li>
                 <li className="flex gap-4">
                   <span className="text-2xl">👀</span>
-                  <div>Keep your face clearly visible in the frame</div>
+                  <div>Keep your face clearly visible in the frame.</div>
                 </li>
                 <li className="flex gap-4">
                   <span className="text-2xl">⏰</span>
                   <div>
-                    Answer each question thoughtfully within 2-3 minutes
+                    Answer each question thoughtfully within 1-minutes.
                   </div>
                 </li>
                 <li className="flex gap-4">
                   <span className="text-2xl">🚫</span>
-                  <div>No external help, notes, or searching allowed</div>
+                  <div>No external help, notes, or searching allowed.</div>
                 </li>
+                 <li className="flex gap-4">
+                  <span className="text-2xl">🚫</span>
+                  <div>Your answer will be evaluated in % form at the end.</div>
+                </li>
+                
               </ul>
             </Card>
 
@@ -317,26 +322,27 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
               <ul className="space-y-5 text-lg text-gray-700 dark:text-gray-300">
                 <li className="flex gap-4">
                   <span className="text-2xl">🌿</span>
-                  <div>Find a quiet, well-lit room with neutral background</div>
+                  <div>Find a quiet, well-lit room with neutral background.</div>
                 </li>
                 <li className="flex gap-4">
                   <span className="text-2xl">🪑</span>
-                  <div>Sit upright, maintain eye contact with the camera</div>
+                  <div>Sit upright, maintain eye contact with the camera.</div>
                 </li>
                 <li className="flex gap-4">
                   <span className="text-2xl">💡</span>
-                  <div>Speak clearly and at a moderate pace</div>
+                  <div>Speak clearly and at a moderate pace.</div>
                 </li>
-                <li className="flex gap-4">
-                  <span className="text-2xl">🧠</span>
-                  <div>
-                    Use the STAR method (Situation, Task, Action, Result) for
-                    behavioral questions
-                  </div>
+               <li className="flex gap-4">
+                  <span className="text-2xl">🚫</span>
+                  <div>If you want to stop the interview, say "stop" or "done".</div>
                 </li>
                 <li className="flex gap-4">
                   <span className="text-2xl">😊</span>
-                  <div>Smile naturally and show enthusiasm!</div>
+                  <div>The interview will end automatically after 30 minutes.</div>
+                </li>
+                 <li className="flex gap-4">
+                  <span className="text-2xl">🚫</span>
+                  <div>Type "skip" to skip the current question.</div>
                 </li>
               </ul>
             </Card>
