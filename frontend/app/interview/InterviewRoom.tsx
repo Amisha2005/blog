@@ -1,10 +1,15 @@
 "use client";
+
+import React, { useState, useRef, useEffect, useCallback } from "react";
+import * as faceapi from "face-api.js";
+//fileSetResolver used to create enviroment for working of objectdetector in browser
+import { FilesetResolver, ObjectDetector } from "@mediapipe/tasks-vision";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import Link from "next/link";
 import {
   Mic,
   MicOff,
@@ -15,211 +20,233 @@ import {
   MoveRight,
   Sparkles,
 } from "lucide-react";
-import { useState, useEffect, useRef } from "react";
+
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+//useSearchParams used to get value from url such as we are taking topic
+import { useSearchParams } from 'next/navigation';
 
 interface Message {
   text: string;
   isBot: boolean;
 }
+
 interface InterviewRoomProps {
-  selectedTopic: string | null; // Important: allow null
+  selectedTopic: string | null;
 }
+//objectDtector where object are store initially it will be null
+
+let objectDetector: ObjectDetector | null = null;
+
 export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
-  //   const searchParams = useSearchParams();
-  //   const selectedTopic = searchParams.get("topic");
-  const cleanTopic = selectedTopic ? decodeURIComponent(selectedTopic) : null;
-  const [questionStartTime, setQuestionStartTime] = useState<number | null>(
-    null
-  );
-  const [typingTimerId, setTypingTimerId] = useState<NodeJS.Timeout | null>(
-    null
-  );
-  const [interviewStarted, setInterviewStarted] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      text: "Welcome! Please choose an interview topic to begin:",
-      isBot: true,
-    },
-  ]);
-  const [input, setInput] = useState("");
-  const [stream, setStream] = useState<MediaStream | null>(null);
+const searchParams = useSearchParams();
+// fetching topic from url
+const topicParam = searchParams.get('topic');
+//? is used for shortcut of if else
+const cleanTopic = topicParam ? decodeURIComponent(topicParam) : null;
+
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState<string>("");
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [interviewStarted, setInterviewStarted] = useState<boolean>(false);
+  const [interviewEnded, setInterviewEnded] = useState<boolean>(false);
+  //set value is ignore means you don't hav e to change the value later and crypto.randomUUID() is used to generate random unique id for each interview session which will be used in backend to identify the session and store the data related to that session
+  const [sessionId] = useState<string>(crypto.randomUUID());
+
+  // Timer states
+  const [timeLeft, setTimeLeft] = useState<number | null>(null);
+  const [isTimerRunning, setIsTimerRunning] = useState(false);
+
+  //import { useRef } from "react";
+
+// function InputFocus() {
+//   const inputRef = useRef(null);
+
+//   const focusInput = () => {
+//     inputRef.current.focus();
+//   };
+
+//   return (
+//     <>
+//       <input ref={inputRef} />
+//       <button onClick={focusInput}>Focus</button>
+//     </>
+//   );
+// }
+//inputRef stores the input element
+// inputRef.current gives access to it
+
+
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Selection states
+  const [showDifficulty, setShowDifficulty] = useState<boolean>(false);
+  const [selectedDifficulty, setSelectedDifficulty] = useState<"Easy" | "Medium" | "Hard" | null>(null);
+  const [showDuration, setShowDuration] = useState<boolean>(false);
+  const [selectedDuration, setSelectedDuration] = useState<number | null>(null); // minutes
+
+  // Camera & Media states
+  const [cameraActive, setCameraActive] = useState<boolean>(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
   const [isCameraOn, setIsCameraOn] = useState(true);
   const [isMicOn, setIsMicOn] = useState(true);
-  const [isListening, setIsListening] = useState(false); // NEW: Speech recognition state
+  const [isListening, setIsListening] = useState(false);
 
-  const videoRef = useRef<HTMLVideoElement>(null);
+  // Emotion & Object detection
+  const [isModelReady, setIsModelReady] = useState<boolean>(false);
+  const [emotionSamples, setEmotionSamples] = useState<
+    { smile: number; stress: number; conf: number; timestamp: number }[]
+  >([]);
+  const [showInstructions, setShowInstructions] = useState<boolean>(true);
+  const [smileScore, setSmileScore] = useState<number>(0);
+  const [stressScore, setStressScore] = useState<number>(0);
+  const [confidenceScore, setConfidenceScore] = useState<number>(0);
+  const [finalScore, setFinalScore] = useState<number | null>(null);
+const [customTopic, setCustomTopic] = useState<string | null>(null);
+  const [facesDetected, setFacesDetected] = useState<number>(0);
+  const [isPaused, setIsPaused] = useState<boolean>(false);
+  const [showMultiFaceModal, setShowMultiFaceModal] = useState<boolean>(false);
+  const [showSuspiciousObjectModal, setShowSuspiciousObjectModal] = useState<boolean>(false);
+  const [suspiciousObjectsList, setSuspiciousObjectsList] = useState<string[]>([]);
+  const lastObjectAlertTimeRef = useRef<number>(0);
+  const OBJECT_ALERT_COOLDOWN_MS = 10000;
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const recognitionRef = useRef<any>(null); // SpeechRecognition instance
-
-  useEffect(() => {
-    if (cleanTopic && !interviewStarted) {
-      setMessages([
-        {
-          text: `Great! You've selected the topic\n\n**"${cleanTopic}"**\n\nI'll ask you interview questions about this. Please allow camera & mic to begin!.To start the interview type "start".Make sure to stay at inteview until it end itself.It will ens within 30 min.
-          If you want to stop the interview say "stop".
-          `,
-          isBot: true,
-        },
-      ]);
-    }
-  }, [cleanTopic, interviewStarted]); // ← dependency is cleanTopic, not selectedTopic
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  // === Speech Recognition Setup ===
-  useEffect(() => {
-    if (
-      !("SpeechRecognition" in window || "webkitSpeechRecognition" in window)
-    ) {
-      console.warn("Speech recognition not supported in this browser.");
-      return;
-    }
-
-    const SpeechRecognition =
-      (window as any).SpeechRecognition ||
-      (window as any).webkitSpeechRecognition;
-    const recognition = new SpeechRecognition();
-
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = "en-US";
-
-    let finalTranscript = "";
-
-    recognition.onresult = (event: any) => {
-      let interimTranscript = "";
-
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcriptPart = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          finalTranscript += transcriptPart + " ";
-        } else {
-          interimTranscript += transcriptPart;
+  const recognitionRef = useRef<any>(null);
+// useRef is often used to store values that should persist between renders without causing a re-render.
+  // ────────────────────────────────────────────────
+  //  Timer Logic
+  // ────────────────────────────────────────────────
+  const startInterviewTimer = (seconds: number) => {
+    setTimeLeft(seconds);
+    setIsTimerRunning(true);
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      setTimeLeft((t) => {
+        if (t == null || t <= 0) {
+          if (timerRef.current) clearInterval(timerRef.current);
+          endInterviewDueToTime();
+          return 0;
         }
-      }
+        return t - 1;
+      });
+    }, 1000);
+  };
 
-      setInput(finalTranscript.trim() + " " + interimTranscript);
-    };
+  const endInterviewDueToTime = () => {
+    setInterviewEnded(true);
+    setIsTimerRunning(false);
+    const score = calculateFinalPresenceScore();
+    setFinalScore(score);
 
-    recognition.onerror = (event: any) => {
-      console.error("Speech recognition error:", event.error);
-      setIsListening(false);
-      if (event.error === "no-speech") {
-        // Optional: alert("No speech detected. Try again.");
-      }
-    };
+    setMessages((prev) => [
+      ...prev,
+      {
+        text: `Interview finished!\n\nBody Language & Presence Score: ${score}%`,
+        isBot: true,
+      },
+      {
+        text: "⌛ Time's up! Interview ended automatically.",
+        isBot: true,
+      },
+    ]);
 
-    recognition.onend = () => {
-      setIsListening(false);
-    };
+    sendToBackend("[TIME_LIMIT_REACHED] Interview ended due to time limit");
 
-    recognitionRef.current = recognition;
+    setTimeout(stopCamera, 3000);
+  };
 
-    return () => {
-      recognition.stop();
-    };
-  }, []);
-
-  const toggleVoiceInput = () => {
-    if (!recognitionRef.current) {
-      alert("Speech recognition is not supported in your browser.");
-      return;
+  const pauseTimer = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
     }
+    setIsTimerRunning(false);
+  };
 
-    if (isListening) {
-      recognitionRef.current.stop();
-      setIsListening(false);
-    } else {
-      recognitionRef.current.start();
-      setIsListening(true);
+  const resumeTimer = () => {
+    if (timeLeft && timeLeft > 0) {
+      setIsTimerRunning(true);
+      timerRef.current = setInterval(() => {
+        setTimeLeft((t) => (t ?? 0) - 1);
+      }, 1000);
     }
   };
 
-  const sendMessage = async (text: string) => {
-    const userMsg = text.trim();
-    if (!userMsg) return;
+  const formatTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+  };
 
-    if (typingTimerId) {
-      clearTimeout(typingTimerId);
-      setTypingTimerId(null);
-    }
+  // ────────────────────────────────────────────────
+  //  Camera Control
+  // ────────────────────────────────────────────────
+  const startCamera = async () => {
+  setCameraError(null);
 
-    setMessages((prev) => [...prev, { text: userMsg, isBot: false }]);
-    setInput("");
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: "user",
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+      },
+      audio: true,
+    });
 
-    try {
-      const res = await fetch("https://novatech-z95h.onrender.com/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat: userMsg,
-          topic: cleanTopic,
-        }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-
-        setMessages((prev) => {
-          const timer = setTimeout(() => {
-            setMessages((m) => [
-              ...m,
-              {
-                text: "Taking a bit long? Here's the next question to keep momentum!",
-                isBot: true,
-              },
-            ]);
-            sendMessage("continue");
-          }, 60000);
-
-          setTypingTimerId(timer);
-          setQuestionStartTime(Date.now());
-
-          return [...prev, { text: data.reply, isBot: true }];
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream;
+      // Important: wait for 'loadedmetadata' before play
+      videoRef.current.onloadedmetadata = () => {
+        //This code is used to start playing the camera video only after the video metadata is loaded. 📷 by the browser then the camera vedio start playing
+        videoRef.current?.play().catch((err) => {
+          console.error("Auto-play failed:", err);
+          setCameraError("Video play failed - please click anywhere on page");
         });
-      }
-    } catch (err) {
-      console.error("Error sending message:", err);
+      };
     }
-  };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    sendMessage(input);
-  };
-
-  const startInterview = async () => {
-    try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          facingMode: "user",
-        },
-        audio: true,
-      });
-
-      setStream(mediaStream);
-      setIsCameraOn(true);
-      setIsMicOn(true);
-      setInterviewStarted(true);
-    } catch (err: any) {
-      console.error("Media access failed:", err);
-      alert(
-        `Failed to access camera/mic: ${err.message || "Permission denied"}`
-      );
+    streamRef.current = stream;
+    //This line stores the camera/media stream inside a useRef reference variable.
+    setCameraActive(true);
+    setIsCameraOn(true);
+    setIsMicOn(true);
+  } catch (err: any) {
+    let msg = "Camera/Mic access failed";
+    if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+      msg = "Camera and microphone permission denied. Please allow access in browser settings.";
+    } else if (err.name === "NotFoundError") {
+      msg = "No camera or microphone found on this device.";
+    } else if (err.name === "NotReadableError") {
+      msg = "Camera is in use by another application.";
     }
+    console.error("getUserMedia error:", err);
+    setCameraError(msg);
+    setMessages((prev) => [...prev, { text: msg, isBot: true }]);
+  }
+};
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setCameraActive(false);
   };
 
   const toggleCamera = () => {
-    if (!stream) return;
-    const videoTrack = stream.getVideoTracks()[0];
+    if (!streamRef.current) return;
+    const videoTrack = streamRef.current.getVideoTracks()[0];
     if (videoTrack) {
       videoTrack.enabled = !isCameraOn;
       setIsCameraOn(!isCameraOn);
@@ -227,170 +254,427 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   };
 
   const toggleMic = () => {
-    if (!stream) return;
-    const audioTrack = stream.getAudioTracks()[0];
+    if (!streamRef.current) return;
+    const audioTrack = streamRef.current.getAudioTracks()[0];
     if (audioTrack) {
       audioTrack.enabled = !isMicOn;
       setIsMicOn(!isMicOn);
     }
   };
 
-  // Video stream assignment
+  // ────────────────────────────────────────────────
+  //  Models Loading
+  // ────────────────────────────────────────────────
   useEffect(() => {
-    if (videoRef.current && stream) {
-      videoRef.current.srcObject = stream;
-      videoRef.current
-        .play()
-        .catch((err) => console.error("Video play failed:", err));
-    }
-  }, [stream]);
-
-  // Cleanup
-  useEffect(() => {
-    return () => {
-      stream?.getTracks().forEach((track) => track.stop());
+    const loadModels = async () => {
+      try {
+        const MODEL_URL = "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights/";
+        await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+        await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+        await faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL);
+        setIsModelReady(true);
+      } catch (err) {
+        console.error("face-api models failed", err);
+        setMessages((p) => [...p, { text: "Emotion detection unavailable.", isBot: true }]);
+      }
     };
-  }, [stream]);
-  if (!interviewStarted) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-purple-50 dark:from-slate-950 dark:to-purple-950/60 flex items-center justify-center p-6">
-        <div className="max-w-4xl w-full">
-          {/* Header */}
-          <div className="text-center mb-12">
-            <div className="w-32 h-32 mx-auto bg-gradient-to-br from-purple-600 to-pink-600 rounded-3xl flex items-center justify-center shadow-2xl mb-8">
-              <Bot className="w-16 h-16 text-white" />
-            </div>
-            <h1 className="text-5xl md:text-6xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent mb-4">
-              AI Interview Room
-            </h1>
-            <p className="text-xl text-muted-foreground">
-              Prepare for a realistic, professional interview experience
-            </p>
-            <p className="text-xl text-muted-foreground">Judge yourself</p>
-          </div>
+    loadModels();
 
-          {/* Rules & Tips Grid */}
-          <div className="grid md:grid-cols-2 gap-8 mb-12">
-            {/* Rules Card */}
-            <Card className="p-8 bg-white/80 dark:bg-black/60 backdrop-blur border border-gray-200/50 dark:border-white/10">
-              <h2 className="text-3xl font-bold mb-6 text-purple-700 dark:text-purple-400 flex items-center gap-3">
-                <Sparkles className="w-8 h-8" />
-                Interview Rules
-              </h2>
-              <ul className="space-y-5 text-lg text-gray-700 dark:text-gray-300">
-                <li className="flex gap-4">
-                  <span className="text-2xl">📹</span>
-                  <div>
-                    <strong>Camera must be ON</strong> throughout the interview.
-                  </div>
-                </li>
-                <li className="flex gap-4">
-                  <span className="text-2xl">🎤</span>
-                  <div>
-                    <strong>Microphone must be ON</strong> and clear (no
-                    background noise).
-                  </div>
-                </li>
-                <li className="flex gap-4">
-                  <span className="text-2xl">👀</span>
-                  <div>Keep your face clearly visible in the frame.</div>
-                </li>
-                <li className="flex gap-4">
-                  <span className="text-2xl">⏰</span>
-                  <div>
-                    Answer each question thoughtfully within 1-minutes.
-                  </div>
-                </li>
-                <li className="flex gap-4">
-                  <span className="text-2xl">🚫</span>
-                  <div>No external help, notes, or searching allowed.</div>
-                </li>
-                 <li className="flex gap-4">
-                  <span className="text-2xl">🚫</span>
-                  <div>Your answer will be evaluated in % form at the end.</div>
-                </li>
-                
-              </ul>
-            </Card>
+    // MediaPipe Object Detector
+    (async () => {
+      try {
+        const vision = await FilesetResolver.forVisionTasks(
+          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+        );
+        //FilesetResolver loads the WebAssembly runtime files required for MediaPipe Vision.
+        objectDetector = await ObjectDetector.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath:
+              "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite2/float16/latest/efficientdet_lite2.tflite",
+            delegate: "GPU",  
+          },
+          //GPU stands for Graphics Processing Unit. 🖥️
 
-            {/* Tips Card */}
-            <Card className="p-8 bg-white/80 dark:bg-black/60 backdrop-blur border border-gray-200/50 dark:border-white/10">
-              <h2 className="text-3xl font-bold mb-6 text-pink-700 dark:text-pink-400 flex items-center gap-3">
-                <Sparkles className="w-8 h-8" />
-                Pro Tips for Success
-              </h2>
-              <ul className="space-y-5 text-lg text-gray-700 dark:text-gray-300">
-                <li className="flex gap-4">
-                  <span className="text-2xl">🌿</span>
-                  <div>Find a quiet, well-lit room with neutral background.</div>
-                </li>
-                <li className="flex gap-4">
-                  <span className="text-2xl">🪑</span>
-                  <div>Sit upright, maintain eye contact with the camera.</div>
-                </li>
-                <li className="flex gap-4">
-                  <span className="text-2xl">💡</span>
-                  <div>Speak clearly and at a moderate pace.</div>
-                </li>
-               <li className="flex gap-4">
-                  <span className="text-2xl">🚫</span>
-                  <div>If you want to stop the interview, say "stop" or "done".</div>
-                </li>
-                <li className="flex gap-4">
-                  <span className="text-2xl">😊</span>
-                  <div>The interview will end automatically after 30 minutes.</div>
-                </li>
-                 <li className="flex gap-4">
-                  <span className="text-2xl">🚫</span>
-                  <div>Type "skip" to skip the current question.</div>
-                </li>
-              </ul>
-            </Card>
-          </div>
+          // A GPU is a processor designed to handle many calculations at the same time, especially for graphics and heavy computations like AI and machine learning.
+          //modelAssetPath This loads the trained object detection model file.
+          scoreThreshold: 0.18,
+          maxResults: 10,
+          runningMode: "VIDEO",
+        });
+      } catch (e) {
+        console.error("Object detector init failed", e);
+      }
+    })();
 
-          {/* Topic Display */}
-          {cleanTopic && (
-            <div className="text-center mb-10">
-              <p className="text-xl text-muted-foreground mb-2">
-                Your selected topic:
-              </p>
-              <Badge className="text-2xl px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white">
-                {cleanTopic}
-              </Badge>
-            </div>
-          )}
+    return () => {
+      objectDetector?.close();
+    };
+  }, []);
 
-          {/* Start Button */}
-          <div className="text-center">
-            <Button
-              size="lg"
-              onClick={startInterview}
-              className="h-20 px-20 text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 shadow-2xl transform transition hover:scale-105"
-            >
-              <Video className="mr-6 h-10 w-10" />
-              Start Interview Now
-            </Button>
+  // ────────────────────────────────────────────────
+  //  Emotion & Face Detection Loop
+  // ────────────────────────────────────────────────
+  //useCallback is a React Hook used to memoize (remember) a function so that it is not recreated on every render. 🔁
+  const detectEmotions = useCallback(async () => {
+    if (!videoRef.current || !cameraActive || interviewEnded || !isModelReady) {
+      requestAnimationFrame(detectEmotions);
+      return;
+    }
+    const video = videoRef.current;
+    if (video.paused || video.ended || video.videoWidth === 0) {
+      requestAnimationFrame(detectEmotions);
+      return;
+    }
 
-            <p className="mt-6 text-lg text-muted-foreground">
-              By starting, you agree to keep camera and microphone on during the
-              entire session.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
+    try {
+      const detections = await faceapi
+        .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
+        .withFaceLandmarks()
+        .withFaceExpressions();
+
+      setFacesDetected(detections.length);
+
+      if (detections.length > 1) {
+        setIsPaused(true);
+        setShowMultiFaceModal(true);
+      } else if (detections.length === 1) {
+        const expr = detections[0].expressions;
+        const smile = Math.round((expr.happy || 0) * 100);
+        const stressRaw = (expr.angry || 0) + (expr.sad || 0) + (expr.fearful || 0) + (expr.disgusted || 0);
+        const stress = Math.round(stressRaw * 25);
+        const conf = Math.round((expr.neutral || 0) * 100 - stress * 0.4);
+
+        setSmileScore(smile);
+        setStressScore(stress);
+        setConfidenceScore(conf);
+
+        setEmotionSamples((prev) => [
+          ...prev,
+          { smile, stress, conf, timestamp: Date.now() },
+        ]);
+      } else {
+        setSmileScore(0);
+        setStressScore(0);
+        setConfidenceScore(30);
+      }
+    } catch (err) {
+      console.error("Emotion detection error", err);
+    }
+
+    requestAnimationFrame(detectEmotions);
+  }, [cameraActive, interviewEnded, isModelReady]);
+
+  const calculateFinalPresenceScore = () => {
+    if (emotionSamples.length === 0) return 50;
+    const relevant = emotionSamples.slice(Math.floor(emotionSamples.length * 0.3));
+    const avgSmile = relevant.reduce((s, v) => s + v.smile, 0) / relevant.length;
+    const avgStress = relevant.reduce((s, v) => s + v.stress, 0) / relevant.length;
+    const avgConf = relevant.reduce((s, v) => s + v.conf, 0) / relevant.length;
+    return Math.round(avgSmile * 0.5 + (100 - avgStress) * 0.3 + avgConf * 0.2);
+  };
+
+  useEffect(() => {
+    if (cameraActive && isModelReady) detectEmotions();
+  }, [cameraActive, isModelReady, detectEmotions]);
+
+  // ────────────────────────────────────────────────
+  //  Object Detection (cheating prevention)
+  // ────────────────────────────────────────────────
+  const detectObjects = useCallback(async () => {
+    if (!videoRef.current || !objectDetector || !cameraActive || interviewEnded) {
+      requestAnimationFrame(detectObjects);
+      return;
+    }
+
+    try {
+      const results = await objectDetector.detectForVideo(videoRef.current, performance.now());
+      const suspicious = results.detections.filter((d) => {
+        const label = (d.categories[0]?.categoryName || "").toLowerCase();
+        return (
+          ["cell phone", "mobile phone", "smartphone", "book", "laptop"].includes(label) &&
+          (d.categories[0]?.score ?? 0) > 0.22
+        );
+      });
+
+      if (suspicious.length > 0 && !isPaused) {
+        const now = Date.now();
+        if (now - lastObjectAlertTimeRef.current > OBJECT_ALERT_COOLDOWN_MS) {
+          const labels = [...new Set(suspicious.map((d) => d.categories[0]?.categoryName || "unknown"))];
+          setSuspiciousObjectsList(labels);
+          setShowSuspiciousObjectModal(true);
+          setIsPaused(true);
+          setMessages((p) => [
+            ...p,
+            { text: `Suspicious object(s) detected: ${labels.join(", ")}. Please remove them.`, isBot: true },
+          ]);
+          lastObjectAlertTimeRef.current = now;
+        }
+      }
+    } catch (err) {
+      console.error("Object detection error", err);
+    }
+
+    requestAnimationFrame(detectObjects);
+  }, [cameraActive, interviewEnded]);
+
+  useEffect(() => {
+    if (cameraActive) detectObjects();
+  }, [cameraActive, detectObjects]);
+
+  // ────────────────────────────────────────────────
+  //  Pause / Resume logic
+  // ────────────────────────────────────────────────
+  useEffect(() => {
+    if (isPaused) {
+      pauseTimer();
+    } else if (timeLeft != null && timeLeft > 0 && !isTimerRunning) {
+      resumeTimer();
+    }
+  }, [isPaused]);
+
+  // ────────────────────────────────────────────────
+  //  Initial message when topic is passed via props
+  // ────────────────────────────────────────────────
+
+  useEffect(() => {
+  if (cleanTopic) {
+    setShowInstructions(true); // Show instructions when topic is loaded
   }
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-purple-50 dark:from-slate-950 dark:to-purple-950/40">
-      <div className="container max-w-7xl mx-auto p-6">
-        <div className="flex justify-between items-center mb-6">
-          <div className="flex items-center gap-4">
-            <Badge className="px-5 py-2 text-lg bg-green-100 text-green-700 dark:bg-green-900/50">
-              <div className="w-3 h-3 bg-green-500 rounded-full mr-2 animate-pulse" />
-              Live Interview
+}, [cleanTopic]);
+
+
+  useEffect(() => {
+    if (cleanTopic) {
+      setMessages([
+        {
+          text: `Great! You've selected **"${cleanTopic}"**.\n\nNext:\n1. Choose difficulty\n2. Choose duration\n3. Type **"start"** when ready (camera & mic will activate)`,
+          isBot: true,
+        },
+      ]);
+      setShowDifficulty(true);
+    }
+    else {
+    // Case 2: No topic → ask user to type one
+    setMessages([
+      {
+        text: `Welcome to the AI Interview Room!\n\nPlease type the **topic** you want to be interviewed on (e.g., "React Hooks", "System Design", "JavaScript ES6").`,
+        isBot: true,
+      },
+    ]);
+    // Do NOT show difficulty yet — wait for user to provide topic
+    setShowDifficulty(false);
+  }
+  }, [cleanTopic]);
+
+  // Scroll to bottom
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  // ────────────────────────────────────────────────
+  //  Speech Recognition
+  // ────────────────────────────────────────────────
+  useEffect(() => {
+    if (!("SpeechRecognition" in window || "webkitSpeechRecognition" in window)) return;
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const rec = new SpeechRecognition();
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = "en-US";
+
+    let final = "";
+    rec.onresult = (e: any) => {
+      let interim = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const part = e.results[i][0].transcript;
+        if (e.results[i].isFinal) final += part + " ";
+        else interim += part;
+      }
+      setInput(final.trim() + " " + interim);
+    };
+
+    rec.onerror = () => setIsListening(false);
+    rec.onend = () => setIsListening(false);
+
+    recognitionRef.current = rec;
+
+    return () => rec.stop();
+  }, []);
+
+  const toggleVoiceInput = () => {
+    if (!recognitionRef.current) return alert("Speech not supported");
+    if (isListening) {
+      recognitionRef.current.stop();
+    } else {
+      recognitionRef.current.start();
+    }
+    setIsListening(!isListening);
+  };
+
+  // ────────────────────────────────────────────────
+  //  Backend communication
+  // ────────────────────────────────────────────────
+  const sendToBackend = async (message: string) => {
+    setIsLoading(true);
+    try {
+      const res = await fetch("https://novatech-z95h.onrender.com/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat: message,
+          topic: cleanTopic,
+          difficulty: selectedDifficulty,
+          duration: selectedDuration,
+          sessionId,
+        }),
+      });
+
+      if (!res.ok) throw new Error("Backend error");
+
+      const data = await res.json();
+      setMessages((prev) => [...prev, { text: data.reply, isBot: true }]);
+
+      if (data.reply.toLowerCase().includes("interview complete") || data.reply.includes("ended")) {
+        setInterviewEnded(true);
+        stopCamera();
+        await handleEvaluate();
+      }
+    } catch (err) {
+      setMessages((p) => [...p, { text: "Network error. Try again.", isBot: true }]);
+    } finally {
+      setIsLoading(false);
+    }
+
+
+  };
+
+  // ── New: Evaluation handler ────────────────────────────────────────
+const handleEvaluate = async () => {
+  try {
+    const evalRes = await fetch("https://novatech-z95h.onrender.com/api/evaluate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId,
+        topic: cleanTopic || customTopic,
+        difficulty: selectedDifficulty,
+      }),
+    });
+
+    if (!evalRes.ok) throw new Error("Evaluation failed");
+
+    const scores = await evalRes.json();
+
+    // Store scores somewhere accessible (e.g. state + localStorage for redirect)
+    //storing in interviewscore and getting in congratulation page and showing the score there
+    localStorage.setItem("interviewScores", JSON.stringify({
+      overall: scores.overall || 0,
+      technical: scores.technical_accuracy || 0,
+      communication: scores.communication || 0,
+      problem_solving: scores.problem_solving || 0,
+      strengths: scores.strengths || [],
+      weaknesses: scores.weaknesses || [],
+      feedback: scores.feedback || "No detailed feedback available.",
+      topic: cleanTopic || customTopic,
+      difficulty: selectedDifficulty,
+    }));
+
+    // Optional: Show quick message
+    setMessages((prev) => [
+      ...prev,
+      { text: `Evaluation complete. Overall score: ${scores.overall || "?"}%`, isBot: true },
+    ]);
+
+    // Redirect to congratulations (with optional query params if you prefer)
+    // Option 1: Use localStorage (cleaner for complex data)
+    window.location.href = "/congratulations";
+
+    // Option 2: Pass via URL (limited length, but simple)
+    // window.location.href = `/congratulations?overall=${scores.overall || 0}&feedback=${encodeURIComponent(scores.feedback || '')}`;
+
+  } catch (err) {
+    console.error("Evaluation error:", err);
+    setMessages((prev) => [
+      ...prev,
+      { text: "Could not generate final score. Please try again later.", isBot: true },
+    ]);
+  }
+};
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim() || isLoading || interviewEnded) return;
+
+    const text = input.trim();
+// Special case: User is providing custom topic (and no cleanTopic exists)
+  if (!cleanTopic && !customTopic && !interviewStarted) {
+    // Assume first non-command message is the topic
+    setCustomTopic(input.trim()); // store what user typed
+    setMessages((prev) => [
+      ...prev,
+      { text: input.trim(), isBot: false },
+      {
+        text: `Perfect! You've chosen **"${input.trim()}"** as your topic.\n\nNow:\n1. Choose difficulty\n2. Choose duration\n3. Type **"start"** when ready.`,
+        isBot: true,
+      },
+    ]);
+    setShowDifficulty(true); // now reveal selectors
+    setInput("");
+    return;
+  }
+    // Special commands
+    if (text.toLowerCase() === "start" && !interviewStarted) {
+      if (!selectedDifficulty || !selectedDuration) {
+        setMessages((p) => [...p, { text: "Please select difficulty and duration first.", isBot: true }]);
+        return;
+      }
+      setInterviewStarted(true);
+      startCamera();
+      startInterviewTimer(selectedDuration * 60);
+      setMessages((p) => [...p, { text: `Starting ${selectedDifficulty} ${cleanTopic} interview (${selectedDuration} min)...`, isBot: true }]);
+      sendToBackend(`start ${selectedDifficulty} ${cleanTopic} ${selectedDuration}min`);
+    } else if (text.toLowerCase() === "stop") {
+      setInterviewEnded(true);
+      stopCamera();
+      setMessages((p) => [...p, { text: "Interview stopped by user.", isBot: true }]);
+      sendToBackend("[USER_STOPPED]");
+    } else if (isPaused) {
+      if (text.toLowerCase() === "yes" || text.toLowerCase() === "ok") {
+        setIsPaused(false);
+        setShowMultiFaceModal(false);
+        setShowSuspiciousObjectModal(false);
+        setMessages((p) => [...p, { text: "Resuming interview. Continue.", isBot: true }]);
+      } else {
+        setMessages((p) => [...p, { text: 'Type "yes" or "ok" to resume.', isBot: true }]);
+      }
+    } else {
+      setMessages((p) => [...p, { text, isBot: false }]);
+      sendToBackend(text);
+    }
+    sendToBackend(text);
+
+    setInput("");
+  };
+ 
+return (
+  <div className="min-h-screen bg-gradient-to-br from-gray-50 to-purple-50 dark:from-slate-950 dark:to-purple-950/40">
+    <div className="container max-w-7xl mx-auto p-6">
+      <div className="flex justify-between items-center mb-6">
+        <div className="flex items-center gap-4">
+          <Badge className="px-5 py-2 text-lg bg-green-100 text-green-700 dark:bg-green-900/50">
+            <div className="w-3 h-3 bg-green-500 rounded-full mr-2 animate-pulse" />
+            Live Interview
+          </Badge>
+          <h2 className="text-2xl font-bold">Senior React Engineer</h2>
+        </div>
+
+        <div className="flex items-center gap-6">
+          {interviewStarted && timeLeft !== null && (
+            <Badge variant="outline" className="px-4 py-2 text-base font-mono">
+              {formatTime(timeLeft)}
             </Badge>
-            <h2 className="text-2xl font-bold">Senior React Engineer</h2>
-          </div>
+          )}
 
           <div className="flex gap-3">
             <Button
@@ -398,12 +682,9 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
               size="lg"
               onClick={toggleCamera}
               className="gap-2"
+              disabled={!interviewStarted}
             >
-              {isCameraOn ? (
-                <Video className="h-5 w-5" />
-              ) : (
-                <VideoOff className="h-5 w-5" />
-              )}
+              {isCameraOn ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
               {isCameraOn ? "Camera On" : "Camera Off"}
             </Button>
 
@@ -411,159 +692,363 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
               variant={isMicOn ? "outline" : "destructive"}
               size="lg"
               onClick={toggleMic}
+              disabled={!interviewStarted}
             >
-              {isMicOn ? (
-                <Mic className="h-5 w-5" />
-              ) : (
-                <MicOff className="h-5 w-5" />
-              )}
+              {isMicOn ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
             </Button>
           </div>
         </div>
+      </div>
+        {isLoading && (
+              <div className="text-center text-gray-500 italic">
+                Interviewer thinking...
+              </div>
+            )}
 
-        <div className="grid lg:grid-cols-2 gap-8">
-          {/* LEFT: Chat */}
-          <Card className="h-[82vh] flex flex-col bg-white/90 dark:bg-black/70 backdrop-blur-xl border border-gray-200/50 dark:border-white/10">
-            <div className="p-6 border-b">
-              <div className="flex items-center gap-4">
-                <Avatar>
-                  <AvatarFallback className="bg-gradient-to-br from-purple-600 to-pink-600 text-white text-xl font-bold">
-                    N
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <p className="font-bold text-lg">Nova AI Interviewer</p>
-                  <p className="text-sm text-muted-foreground">
-                    Real-time evaluation
-                  </p>
-                </div>
+      {cameraError && (
+  <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-50 text-center p-8">
+    <div className="text-white text-xl max-w-md">
+      <p className="font-bold mb-4 text-red-400">Camera Error</p>
+      <p>{cameraError}</p>
+      <p className="text-sm mt-6 opacity-80">
+        Refresh the page and allow camera access when prompted.
+      </p>
+    </div>
+  </div>
+)}
+{showInstructions && cleanTopic && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-6">
+          <Card className="max-w-3xl w-full max-h-[90vh] overflow-y-auto bg-white/95 dark:bg-slate-900/95 border border-purple-500/30 rounded-3xl shadow-2xl p-10">
+            <h2 className="text-3xl font-bold text-center mb-8 bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+              Important Interview Instructions & Rules
+            </h2>
+
+            <div className="space-y-8 text-lg leading-relaxed">
+              <div>
+                <h3 className="text-xl font-semibold mb-3 text-purple-700 dark:text-purple-400">
+                  Welcome to your AI-Powered Interview
+                </h3>
+                <p>
+                  You have selected: <strong className="text-purple-600">{cleanTopic}</strong>
+                </p>
+                <p className="mt-2">
+                  This is a realistic, proctored interview simulation. Your performance, body language, and environment will be evaluated.
+                </p>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-semibold mb-3 text-purple-700 dark:text-purple-400">
+                  What You Need to Do
+                </h3>
+                <ul className="list-disc pl-6 space-y-2">
+                  <li>Allow camera and microphone access when prompted</li>
+                  <li>Keep your face clearly visible and centered at all times</li>
+                  <li>Speak clearly and naturally — no reading from scripts</li>
+                  <li>Stay in frame — do not leave or turn away from the camera</li>
+                  <li>Answer honestly and professionally</li>
+                </ul>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-semibold mb-3 text-purple-700 dark:text-purple-400">
+                  Rules & Prohibited Actions
+                </h3>
+                <ul className="list-disc pl-6 space-y-2 text-red-600 dark:text-red-400 font-medium">
+                  <li>No looking at phone, books, notes, or second screens</li>
+                  <li>No other people in the room or visible on camera</li>
+                  <li>No talking to anyone else during the interview</li>
+                  <li>No external help or AI assistance (other than this interviewer)</li>
+                  <li>Do not cover or disable the camera/microphone</li>
+                </ul>
+                <p className="mt-4 text-sm text-muted-foreground">
+                  Violation of rules may pause the interview or affect your score.
+                </p>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-semibold mb-3 text-purple-700 dark:text-purple-400">
+                  How Scoring Works
+                </h3>
+                <ul className="list-disc pl-6 space-y-2">
+                  <li>Technical knowledge & communication</li>
+                  <li>Body language & confidence (smile, eye contact, calmness)</li>
+                  <li>Environment check (no suspicious objects)</li>
+                  <li>Final presence score shown at the end</li>
+                </ul>
+              </div>
+
+              <div className="text-center mt-10">
+                <p className="text-lg font-medium mb-6">
+                  By continuing, you agree to follow all rules and allow real-time monitoring.
+                </p>
+
+                <Button
+                  size="lg"
+                  className="px-12 py-7 text-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 shadow-xl"
+                  onClick={() => setShowInstructions(false)}
+                >
+                  I Understand & Proceed
+                </Button>
               </div>
             </div>
+          </Card>
+        </div>
+      )}
+      {/* ─── Configuration Screen ─── shown until interview starts ─── */}
+      {!interviewStarted && (
+        <Card className="mb-10 p-8 bg-white/90 dark:bg-black/70 backdrop-blur-xl border border-gray-200/50 dark:border-white/10 rounded-3xl shadow-2xl max-w-4xl mx-auto">
+          <h3 className="text-2xl font-bold text-center mb-8 bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+            Let's set up your interview
+          </h3>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {messages.map((msg, index) => (
-                <div
-                  key={index}
-                  className={`flex gap-4 ${msg.isBot ? "" : "justify-end"}`}
-                >
-                  {msg.isBot && (
-                    <Avatar>
-                      <AvatarFallback className="bg-gradient-to-br from-purple-600 to-pink-600 text-white">
-                        N
-                      </AvatarFallback>
-                    </Avatar>
-                  )}
-                  <div
-                    className={`max-w-xl ${
-                      msg.isBot
-                        ? "bg-gray-100 dark:bg-white/10"
-                        : "bg-gradient-to-r from-purple-600 to-pink-600 text-white"
-                    } px-6 py-4 rounded-2xl shadow-lg text-lg whitespace-pre-line`}
-                  >
-                    {msg.text}
-                  </div>
-                  {!msg.isBot && (
-                    <Avatar>
-                      <AvatarFallback className="bg-gray-400 text-white">
-                        U
-                      </AvatarFallback>
-                    </Avatar>
-                  )}
-                </div>
-              ))}
-              <div ref={messagesEndRef} />
+          <div className="grid md:grid-cols-2 gap-8 mb-10">
+            <div>
+              <label className="block text-base font-medium mb-3">Difficulty Level</label>
+              <Select
+                value={selectedDifficulty ?? undefined}
+                onValueChange={(v) => setSelectedDifficulty(v as "Easy" | "Medium" | "Hard")}
+              >
+                <SelectTrigger className="h-14 text-lg">
+                  <SelectValue placeholder="Choose difficulty" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Easy">Easy</SelectItem>
+                  <SelectItem value="Medium">Medium</SelectItem>
+                  <SelectItem value="Hard">Hard</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
-            {/* Input Area - Now with Voice Button */}
-            <div className="p-6 border-t">
-              <form onSubmit={handleSubmit} className="flex gap-4 items-end">
-                {/* Voice Input Button */}
-                <Button
-                  type="button"
-                  size="lg"
-                  variant={isListening ? "default" : "outline"}
-                  onClick={toggleVoiceInput}
-                  className={`gap-2 ${
-                    isListening
-                      ? "bg-red-600 hover:bg-red-700 animate-pulse"
-                      : ""
-                  }`}
+            <div>
+              <label className="block text-base font-medium mb-3">Duration</label>
+              <Select
+                value={selectedDuration?.toString() ?? undefined}
+                onValueChange={(v) => setSelectedDuration(Number(v))}
+              >
+                <SelectTrigger className="h-14 text-lg">
+                  <SelectValue placeholder="Choose duration" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="10">10 minutes</SelectItem>
+                  <SelectItem value="20">20 minutes</SelectItem>
+                  <SelectItem value="30">30 minutes</SelectItem>
+                  <SelectItem value="45">45 minutes</SelectItem>
+                  <SelectItem value="60">60 minutes</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="text-center text-muted-foreground text-lg">
+            {selectedDifficulty && selectedDuration ? (
+              <p>Everything is ready! Type <strong className="text-purple-600 font-semibold">"start"</strong> below to begin the interview</p>
+            ) : (
+              <p>Please select difficulty and duration to continue</p>
+            )}
+          </div>
+          
+        </Card>
+      )}
+
+      <div className="grid lg:grid-cols-2 gap-8">
+        {/* LEFT: Chat */}
+        <Card className="h-[82vh] flex flex-col bg-white/90 dark:bg-black/70 backdrop-blur-xl border border-gray-200/50 dark:border-white/10">
+         {cameraActive && (
+            <div className="absolute top-3 left-3 bg-black/65 text-white text-sm px-3 py-2 rounded-md font-mono z-10 shadow" style={{marginLeft:"-10pc"}}>
+              <div>😊 Smile: {smileScore.toFixed(0)}%</div>
+              <div className={stressScore > 60 ? "text-red-400" : "text-white"}>
+                😰 Stress: {stressScore.toFixed(0)}%
+              </div>
+              <div
+                className={
+                  confidenceScore > 60 ? "text-blue-400" : "text-white"
+                }
+              >
+                💪 Conf: {confidenceScore.toFixed(0)}%
+              </div>
+            </div>
+          )}
+          <div className="p-6 border-b">
+            <div className="flex items-center gap-4">
+              <Avatar>
+                <AvatarFallback className="bg-gradient-to-br from-purple-600 to-pink-600 text-white text-xl font-bold">
+                  N
+                </AvatarFallback>
+              </Avatar>
+              <div>
+                <p className="font-bold text-lg">Nova AI Interviewer</p>
+                <p className="text-sm text-muted-foreground">Real-time evaluation</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            {messages.map((msg, index) => (
+              <div key={index} className={`flex gap-4 ${msg.isBot ? "" : "justify-end"}`}>
+                {msg.isBot && (
+                  <Avatar>
+                    <AvatarFallback className="bg-gradient-to-br from-purple-600 to-pink-600 text-white">
+                      N
+                    </AvatarFallback>
+                  </Avatar>
+                )}
+                <div
+                  className={`max-w-xl ${
+                    msg.isBot
+                      ? "bg-gray-100 dark:bg-white/10"
+                      : "bg-gradient-to-r from-purple-600 to-pink-600 text-white"
+                  } px-6 py-4 rounded-2xl shadow-lg text-lg whitespace-pre-line`}
                 >
-                  <Mic className="h-6 w-6" />
-                  {isListening ? "Listening..." : "Speak"}
-                </Button>
+                  {msg.text}
+                </div>
+                {!msg.isBot && (
+                  <Avatar>
+                    <AvatarFallback className="bg-gray-400 text-white">U</AvatarFallback>
+                  </Avatar>
+                )}
+              </div>
+            ))}
+            <div ref={messagesEndRef} />
+          </div>
 
-                {/* Mic Toggle */}
-                <Button
-                  type="button"
-                  size="lg"
-                  variant={isMicOn ? "outline" : "destructive"}
-                  onClick={toggleMic}
-                >
-                  {isMicOn ? (
-                    <Mic className="h-6 w-6" />
-                  ) : (
-                    <MicOff className="h-6 w-6" />
-                  )}
-                </Button>
+          <div className="p-6 border-t">
+            <form onSubmit={handleSubmit} className="flex gap-4 items-end">
+              <Button
+                type="button"
+                size="lg"
+                variant={isListening ? "default" : "outline"}
+                onClick={toggleVoiceInput}
+                className={`gap-2 ${isListening ? "bg-red-600 hover:bg-red-700 animate-pulse" : ""}`}
+                disabled={isPaused || interviewEnded}
+              >
+                <Mic className="h-6 w-6" />
+                {isListening ? "Listening..." : "Speak"}
+              </Button>
 
-                {/* Text Input */}
-                <Textarea
-                  placeholder="Type your answer or click 'Speak' to dictate..."
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  className="min-h-32 resize-none flex-1"
-                />
+              <Button
+                type="button"
+                size="lg"
+                variant={isMicOn ? "outline" : "destructive"}
+                onClick={toggleMic}
+                disabled={!interviewStarted}
+              >
+                {isMicOn ? <Mic className="h-6 w-6" /> : <MicOff className="h-6 w-6" />}
+              </Button>
 
-                {/* Send Button */}
-                <Button
-                  type="submit"
-                  size="lg"
-                  disabled={!input.trim()}
-                  className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
-                >
-                  <Send className="h-6 w-6" />
-                </Button>
-              </form>
+              <Textarea
+                placeholder={
+                  isPaused
+                    ? 'Type "yes" or "ok" to continue...'
+                    : interviewStarted
+                    ? "Type your answer or click Speak to dictate..."
+                    : "Select options above, then type 'start' to begin"
+                }
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                className="min-h-32 resize-none flex-1"
+                disabled={isPaused || interviewEnded}
+              />
 
-              {/* Listening Feedback */}
-              {isListening && (
-                <p className="text-center mt-4 text-green-600 font-semibold animate-pulse">
-                  🎤 Listening... Speak clearly!
-                </p>
+              <Button
+                type="submit"
+                size="lg"
+                disabled={!input.trim() || isLoading || interviewEnded || isPaused}
+                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 min-w-[70px]"
+              >
+                <Send className="h-6 w-6" />
+              </Button>
+            </form>
+
+            {isListening && (
+              <p className="text-center mt-4 text-green-600 font-semibold animate-pulse">
+                🎤 Listening... Speak clearly!
+              </p>
+            )}
+          </div>
+        </Card>
+
+        {/* RIGHT: Video + overlay states */}
+        <div className="space-y-6">
+          <Card className="rounded-2xl overflow-hidden shadow-2xl bg-gray-900 relative">
+            <div className="relative aspect-video" style={{ height: "34pc" }}>
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-cover scale-x-[-1]"
+              />
+
+              {/* Before interview started */}
+              {!interviewStarted && (
+                <div className="absolute inset-0 bg-black/70 flex items-center justify-center z-40">
+                  <p className="text-white text-3xl font-bold text-center px-8">
+                    Camera will start automatically when you type "start"
+                  </p>
+                </div>
+              )}
+
+              {/* Camera manually off */}
+              {interviewStarted && !isCameraOn && (
+                <div className="absolute inset-0 bg-black/90 flex items-center justify-center z-40">
+                  <p className="text-white text-3xl font-bold">
+                    CAMERA MANUALLY TURNED OFF
+                  </p>
+                </div>
+              )}
+
+              {/* Final score overlay */}
+              {interviewEnded && finalScore !== null && (
+                <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center text-white z-50">
+                  <h2 className="text-4xl font-bold mb-6">Interview Complete</h2>
+                  <p className="text-7xl font-extrabold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+                    {finalScore}%
+                  </p>
+                  <p className="text-2xl mt-4">Presence & Confidence Score</p>
+                </div>
               )}
             </div>
           </Card>
-
-          {/* RIGHT: Video */}
-          <div className="space-y-6">
-            <Card className="rounded-2xl overflow-hidden shadow-2xl bg-gray-900">
-              <div className="relative aspect-video" style={{ height: "34pc" }}>
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="w-full h-full object-cover scale-x-[-1]"
-                />
-
-                {!isCameraOn && (
-                  <div className="absolute inset-0 bg-black/90 flex items-center justify-center z-40">
-                    <p className="text-white text-3xl font-bold">
-                      CAMERA MANUALLY TURNED OFF
-                    </p>
-                  </div>
-                )}
-              </div>
-            </Card>
-          </div>
         </div>
       </div>
-
-      <button className="rounded-lg text-black bg-slate-500 hover:bg-slate-600 w-20 h-10 fixed bottom-8 right-8 flex items-center justify-center shadow-lg pl-2">
-        <Link href="/congratulations">Exit</Link>
-        <MoveRight className="ml-5" />
-      </button>
     </div>
-  );
+
+    {/* Pause modal – same style */}
+    {(showMultiFaceModal || showSuspiciousObjectModal) && (
+      <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 backdrop-blur-sm">
+        <Card className="p-10 max-w-lg text-center bg-white/95 dark:bg-slate-900/95 border border-purple-500/30 rounded-3xl shadow-2xl">
+          <h2 className="text-3xl font-bold text-red-600 mb-6">
+            {showMultiFaceModal ? "Multiple Faces Detected" : "Suspicious Object Detected"}
+          </h2>
+          <p className="text-xl mb-8 leading-relaxed">
+            {showMultiFaceModal
+              ? "Please make sure only you are visible during the interview."
+              : `Please remove: ${suspiciousObjectsList.join(", ")} from view.`}
+          </p>
+          <p className="text-lg text-muted-foreground mb-10">
+            Type <strong>"yes"</strong> or <strong>"ok"</strong> to resume
+          </p>
+          <Button
+            size="lg"
+            onClick={() => {
+              setIsPaused(false);
+              setShowMultiFaceModal(false);
+              setShowSuspiciousObjectModal(false);
+            }}
+            className="px-12 py-7 text-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+          >
+            I've Fixed It
+          </Button>
+        </Card>
+      </div>
+    )}
+
+    {/* Exit button */}
+    <button className="rounded-lg text-black bg-slate-500 hover:bg-slate-600 w-28 h-12 fixed bottom-8 right-8 flex items-center justify-center shadow-lg pl-3 text-base font-medium">
+      <Link href="/congratulations">Exit</Link>
+      <MoveRight className="ml-3 h-5 w-5" />
+    </button>
+  </div>
+);
 }
+

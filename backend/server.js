@@ -1,129 +1,3 @@
-// const express = require("express");
-// const { Groq } = require("groq-sdk"); // Fixed: use require(), not import
-// const app = express();
-// const PORT = 5000;
-// const connectDb = require("./utils/db");
-// require("dotenv").config();
-// const cors = require("cors");
-// const authRoute = require("./Router/auth-router");
-
-
-// const corsOptions = {
-//   origin: "http://localhost:3000",
-//   methods: "GET,POST,PUT,DELETE,PATCH,HEAD",
-//   credentials: true,
-// };
-// app.use(cors(corsOptions));
-// app.use(express.json());
-// app.use("/api/auth", authRoute);
-// const groq = new Groq({
-//   apiKey: process.env.GROQ_API_KEY || "your-api-key-here", // Replace with your actual key or use .env
-// });
-
-// // index.js (add this outside the route, at the top with other variables)
-// // At the top, replace conversationHistory with this:
-// let conversationHistory = [
-//   {
-//     role: "system",
-//     content: `You are a strict technical interviewer conducting a  software interview.
-// Your ONLY job is to ask ONE clear, concise question related to that topic at aploid time.
-
-// The topic is: "${topic}".
-// Ask the questions regarding "${topic}".
-// Start the interview by asking the first question.
-// NEVER explain concepts, NEVER give feedback, NEVER say "good" or "great" or evaluate the answer.
-// Start with easy to hard questions if you think that the client answer your question approximate correctly then give him/her feedback in 
-// % form."
-// every time it refresh or open interview give new question or shuffle the question.
-// Start asking professional questions as the time progress.
-// Do not ask repeated questions. 
-// If the user message is short or says 'next', 'continue', or similar, just ask the next question without feedback.
-// If the candidate says skip the question, just ask the next question.
-// If the candidate take more than 1 min to answer the question, remind him/her to answer quickly and ask the next question and tell them to write "skip" for next question.
-// If the candidate didn't says skip wait for another 1 min to answer if still candidate doesn't give the answer in 1min ask next question.
-// If candidate didn't give any answer for about 3min quit the interview and give there feedback in % form.
-// You don't have to give feedback after every question in % form, only when the candidate says "done" or "stop" to end the interview.
-// Don't ask question about other topics except the given topic.
-// If candidate says another topic, remind him/her that you are only allowed to ask questions about the given topic.
-// If candidate says "stop" or "done" to end the interview then give him/her feedback in % form and say "Interview complete"
-// Only correct the answer if it is factually wrong in short.
-// Shuffle the question every time the client select the topic.
-// After the candidate answers, immediately ask the next logical follow-up question about topic.
-// Do not add any extra text, introductions, or chit-chat.
-// Start from easy question to hard level questions.
-// Ask medium to hard level questions.
-// If the candidate do not say "stop" or "done" you have to ask question about 30min after that stop the interview and give feedback in % form.
-// If the candidate says "done" or "stop", say "Interview complete. Thank you!" and stop.`,
-//   },
-// ];
-// // This array will store the full conversation
-
-// // Updated POST route with memory
-// app.post("/api/chat", async (req, res) => {
-//   console.log(process.env.GROQ_API_KEY);
-//   try {
-//     const userMessage = req.body.chat?.trim() || req.body?.trim();
-
-//     if (!userMessage) {
-//       return res.status(400).json({ reply: "Please send a valid message." });
-//     }
-
-//     console.log("User:", userMessage);
-
-//     // 1. Add user's message to history
-//     conversationHistory.push({
-//       role: "user",
-//       content: userMessage,
-//     });
-
-//     // 2. Call Groq with FULL conversation history
-//     const chatCompletion = await groq.chat.completions.create({
-//       messages: conversationHistory, // ← Now sending full history!
-//       model: "meta-llama/llama-4-maverick-17b-128e-instruct", // Use a valid, fast model
-//       temperature: 0.7,
-//       max_tokens: 512,
-//       top_p: 1,
-//       stream: false,
-//     });
-
-//     // 3. Get bot reply
-//     const botReply =
-//       chatCompletion.choices[0]?.message?.content ||
-//       "I'm having trouble responding right now.";
-
-//     // 4. Add bot reply to history (so it remembers its own responses)
-//     conversationHistory.push({
-//       role: "assistant",
-//       content: botReply,
-//     });
-
-//     // Optional: Limit history size to avoid token overflow (e.g., keep last 20 messages)
-//     if (conversationHistory.length > 21) {
-//       // 1 system + 10 user/assistant pairs
-//       conversationHistory = [
-//         conversationHistory[0], // Keep system prompt
-//         ...conversationHistory.slice(-20), // Keep last 20 messages
-//       ];
-//     }
-
-//     // 5. Send reply to frontend
-//     res.json({ reply: botReply });
-//   } catch (error) {
-//     console.error("Groq API Error:", error.message);
-//     res.status(500).json({ reply: "Sorry, something went wrong. Try again!" });
-//   }
-// });
-
-// connectDb()
-//   .then(() => {
-//     app.listen(PORT, () => {
-//       console.log(`Server running on http://localhost:${PORT}`);
-//     });
-//   })
-//   .catch((error) => {
-//     console.log(`Database connection failed: ${error.message}`);
-//   });
-
 
 const express = require("express");
 const { Groq } = require("groq-sdk");
@@ -133,7 +7,7 @@ const connectDb = require("./utils/db");
 require("dotenv").config();
 const cors = require("cors");
 const authRoute = require("./Router/auth-router");
-
+// In-memory store (restart server → loses history → ok for dev)
 const corsOptions = {
   origin: ["http://localhost:3000","https://nova-tech-rose.vercel.app"],
   methods: "GET,POST,PUT,DELETE,PATCH,HEAD",
@@ -147,85 +21,184 @@ const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
 });
 
-// REMOVE ALL GLOBAL conversationHistory !!
+
+
+
+
+const conversationHistory = new Map(); 
+
+setInterval(() => {
+  for (const [id, hist] of conversationHistory.entries()) {
+    if (hist.length > 100 || Date.now() - (hist[0]?.timestamp || 0) > 60 * 60 * 1000) { // 1 hour old or too long
+      conversationHistory.delete(id);
+    }
+  }
+}, 30 * 60 * 1000);
 
 app.post("/api/chat", async (req, res) => {
-  try {
-    const userMessage = req.body.chat?.trim();
-    const topic = req.body.topic?.trim(); // This is sent from frontend!
+  const { chat: userMessageRaw, topic, difficulty, sessionId } = req.body;
 
-    // Critical: Reject if no topic
-    if (!topic) {
-      return res.json({
-        reply: "Error: No interview topic selected. Please choose a topic first.",
-      });
-    }
+  if (!sessionId) return res.status(400).json({ reply: "Missing sessionId" });
+  if (!topic?.trim()) return res.json({ reply: "Error: No interview topic selected." });
 
-    if (!userMessage) {
-      return res.status(400).json({ reply: "Please type a message." });
-    }
+  const userMessage = (userMessageRaw || "").trim();
+  if (!userMessage) return res.status(400).json({ reply: "Please type a message." });
 
-    console.log("Topic received:", topic);        // Should print "React", "JavaScript", etc.
-    console.log("User message:", userMessage);
+  let history = conversationHistory.get(sessionId) || [];
 
-    // Build messages fresh with REAL topic
-    const messages = [
-      {
-        role: "system",
-        content: `
-You are Nova, a strict and professional technical interviewer.
+  // Special "start" handling only once
+  let effectiveUserMessage = userMessage;
+  if (userMessage.toLowerCase() === "start" && history.length === 0) {
+    effectiveUserMessage = "Start the interview now. Ask the first question appropriate for the difficulty.";
+  }
 
-The interview topic is exactly: "${topic}"
-You MUST ask questions ONLY about "${topic}". Do not go off-topic under any circumstances.
+  history.push({ role: "user", content: effectiveUserMessage });
 
-Rules:
-- Ask exactly ONE clear, professional question at a time.
-- When the user types "start", immediately ask the first easy question about "${topic}".
-- After each answer, ask the next logical or harder question on the same topic.
-- Progress from easy → medium → hard questions.
-- NEVER give explanations, feedback, hints, or praise like "good" or "great".
-- If user says "skip" → ask next question silently.
-- If user says "continue", "next", or short message → ask next question.
-- If user says "stop" or "done" → reply: "Interview complete. Thank you!"
-- No chit-chat. No extra text. Just the question.
-- Give feedback in % form when the user says "stop" or "done".
-- If user takes more than 1 min to answer, remind them to answer quickly and ask next question.
-- If no answer for 3min, end interview and give feedback in % form.
-- Shuffle questions each session. No repeats.
-- Always stay professional and concise.
-- After the candidate "stop" or "done" give feedback in % form about there performance and don't ask question question again.
-- If candidate takes 1min for typing the answer ask next question.
-- Do not ask questions about other topics except the given topic.
-- Only correct the answer if it is factually wrong in short.
-- Start from easy question to hard level questions.
-- If the candidate do not say "stop" or "done" you have to ask question about 30min after that stop the interview and give feedback in % form.
+  const messages = [
+    {
+      role: "system",
+      content: `
+You are Nova, a strict, professional, and adaptive technical interviewer.
 
-Current topic: ${topic}
+Topic: "${topic}"
+You MUST ONLY ask questions about "${topic}". Never go off-topic.
+
+Difficulty: ${difficulty || "Medium"} — follow strictly!
+
+Easy: basic definitions, simple concepts (e.g. "What is useState?")
+Medium: intermediate + practical (e.g. "Explain useEffect cleanup?")
+Hard: senior-level, design, internals, trade-offs (e.g. "Design concurrent mode scheduler")
+
+Rules (must obey):
+- Ask **ONE** clear question at a time.
+- After answer → wait for "continue", "next", or "skip" to ask next.
+- "skip" → move to next without comment.
+- "continue"/"next" → ask next logical question (progress easy → hard).
+- NEVER explain, hint, praise, criticize during interview — stay 100% neutral.
+- ONLY when user says "stop" or "done" → reply exactly: "INTERVIEW_COMPLETE" followed by a short neutral message.
+- Keep replies **very short**: just the question (or end message).
+- Vary / shuffle questions — no fixed list or repeats.
+- No chit-chat, greetings, or extra text.
 `.trim(),
-      },
-      {
-        role: "user",
-        content: userMessage,
-      },
-    ];
+    },
+    ...history,
+  ];
 
+  try {
     const chatCompletion = await groq.chat.completions.create({
-      messages: messages,
-      model: "llama-3.3-70b-versatile", // Best model as of 2025
-      temperature: 0.6,
-      max_tokens: 500,
+      messages,
+      model: "llama-3.3-70b-versatile",
+      temperature: 0.7,          // slightly higher → more varied questions
+      max_tokens: 300,           // questions don't need 500 tokens
     });
 
-    const botReply =
-      chatCompletion.choices[0]?.message?.content?.trim() ||
-      "No response generated.";
+    let botReply = chatCompletion.choices[0]?.message?.content?.trim() || "No response.";
 
-    res.json({ reply: botReply });
+    // Add AI reply to history
+    history.push({ role: "assistant", content: botReply });
+
+    // Save updated history
+    conversationHistory.set(sessionId, history);
+
+    // Detect end (for frontend to know)
+    const isComplete = botReply.includes("INTERVIEW_COMPLETE") || userMessage.toLowerCase() === "stop";
+
+    if (isComplete) {
+      botReply = botReply.replace("INTERVIEW_COMPLETE", "Interview complete. Thank you!");
+      // Frontend can now call /api/evaluate
+    }
+
+    res.json({ reply: botReply, isComplete });
   } catch (error) {
     console.error("Groq Error:", error.message);
-    res.status(500).json({ reply: "Server error. Please try again." });
+    res.status(500).json({ reply: "Server error. Try again later." });
   }
 });
+
+// ── Evaluation Endpoint ────────────────────────────────────────
+app.post("/api/evaluate", async (req, res) => {
+  const { sessionId, topic, difficulty } = req.body;
+
+  if (!sessionId) return res.status(400).json({ error: "Missing sessionId" });
+
+  const history = conversationHistory.get(sessionId) || [];
+  if (history.length < 6) { // at least a few Q&A pairs
+    return res.json({
+      overall: 0,
+      technical_accuracy: 0,
+      communication: 0,
+      problem_solving: 0,
+      strengths: [],
+      weaknesses: [],
+      feedback: "Not enough content to evaluate properly.",
+    });
+  }
+
+  const transcript = history
+    .map(m => `${m.role === "user" ? "Candidate" : "Interviewer"}: ${m.content}`)
+    .join("\n\n");
+
+  const evalMessages = [
+    {
+      role: "system",
+      content: `You are an experienced hiring manager evaluating a ${difficulty || "Medium"} level ${topic} technical interview.
+
+Transcript:
+${transcript}
+
+Evaluate **only** based on answers (ignore interviewer messages).
+Score 0–100 in:
+- overall
+- technical_accuracy
+- communication
+- problem_solving
+
+Also provide:
+- strengths: string[] (bullet points)
+- weaknesses: string[] (bullet points)
+- feedback: one paragraph summary
+
+Return **valid JSON only**, no markdown, no extra text:
+{
+  "overall": number,
+  "technical_accuracy": number,
+  "communication": number,
+  "problem_solving": number,
+  "strengths": ["...", "..."],
+  "weaknesses": ["...", "..."],
+  "feedback": "string"
+}`
+    }
+  ];
+
+  try {
+    const completion = await groq.chat.completions.create({
+      messages: evalMessages,
+      model: "llama-3.3-70b-versatile",
+      temperature: 0.4, // lower = more consistent scoring
+      max_tokens: 800,
+    });
+
+    const raw = completion.choices[0]?.message?.content?.trim() || "{}";
+
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (e) {
+      console.error("JSON parse failed:", raw);
+      parsed = { overall: 50, feedback: "Evaluation parsing error." };
+    }
+
+    // Optional: clean session after evaluation
+    // conversationHistory.delete(sessionId);
+
+    res.json(parsed);
+  } catch (error) {
+    console.error("Evaluation error:", error);
+    res.status(500).json({ error: "Evaluation failed" });
+  }
+});
+
 
 connectDb()
   .then(() => {

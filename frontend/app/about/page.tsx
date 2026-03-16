@@ -7,7 +7,7 @@ import { Mail, Twitter, Github, Linkedin, Globe } from "lucide-react";
 import Link from "next/link";
 
 const author = {
-  name: "Sarah Chen",
+  name: "Amisha Nishankar",
   role: "Full-Stack Developer & Writer",
   bio: "I build performant web applications and write about modern JavaScript, React, Next.js, and the future of the web. Currently engineering at a startup pushing the boundaries of edge computing.",
   avatar: "/avatar.jpg",

@@ -53,8 +53,8 @@ const recentPosts = [
   {
     id: 4,
     src: "https://tse1.mm.bing.net/th/id/OIP.WaCOgSUgMm-RNN1PhMBPWgHaEK?pid=Api&P=0&h=180",
-    title: "Java",
-    category: "Next.js",
+    title: "customize your interview",
+    category: "choose topic according to you",
     date: "Nov 25",
     
   },

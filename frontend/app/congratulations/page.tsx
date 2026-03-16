@@ -1,5 +1,6 @@
 "use client";
-
+import { useSearchParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -7,6 +8,19 @@ import { Sparkles, Trophy, Star, CheckCircle2, ArrowRight } from "lucide-react";
 import Link from "next/link";
 
 export default function CongratulationsPage() {
+  const [scores, setScores] = useState<any>(null);
+
+  useEffect(() => {
+    const stored = localStorage.getItem("interviewScores");
+    if (stored) {
+      setScores(JSON.parse(stored));
+      // Optional: clear after reading
+      // localStorage.removeItem("interviewScores");
+    }
+  }, []);
+
+  const overall = scores?.overall ?? "—";
+  const feedback = scores?.feedback ?? "Great effort! Keep practicing.";
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-indigo-50 dark:from-slate-950 dark:via-purple-950/30 dark:to-indigo-950/30 flex items-center justify-center p-6">
       <div className="max-w-4xl w-full">
@@ -23,8 +37,31 @@ export default function CongratulationsPage() {
               Congratulations!
             </h1>
             <p className="text-2xl md:text-3xl font-light opacity-90">
-              You&apos;ve Successfully Completed Your AI Interview
+              You have Successfully Completed Your AI Interview
             </p>
+
+            <div className="text-center my-10">
+          <h2 className="text-6xl font-bold text-purple-600">{overall}%</h2>
+          <p className="text-2xl mt-4">Overall Performance</p>
+        </div>
+
+        {scores && (
+          <div className="space-y-6">
+            <p className="text-lg italic">{feedback}</p>
+            <div>
+              <h3>Strengths:</h3>
+              <ul className="list-disc pl-6">
+                {scores.strengths?.map((s: string, i: number) => <li key={i}>{s}</li>)}
+              </ul>
+            </div>
+            <div>
+              <h3>Areas to Improve:</h3>
+              <ul className="list-disc pl-6">
+                {scores.weaknesses?.map((w: string, i: number) => <li key={i}>{w}</li>)}
+              </ul>
+            </div>
+          </div>
+        )}
 
             <div className="flex justify-center gap-4 mt-10">
               <Sparkles className="w-12 h-12 animate-pulse" />
