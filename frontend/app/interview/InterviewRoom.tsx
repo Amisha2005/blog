@@ -29,8 +29,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 //useSearchParams used to get value from url such as we are taking topic
-import { useSearchParams } from 'next/navigation';
-
+import { useSearchParams } from "next/navigation";
+import * as pdfjsLib from "pdfjs-dist";
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.5.207/build/pdf.worker.min.mjs";
 interface Message {
   text: string;
   isBot: boolean;
@@ -44,12 +46,14 @@ interface InterviewRoomProps {
 let objectDetector: ObjectDetector | null = null;
 
 export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
-const searchParams = useSearchParams();
-// fetching topic from url
-const topicParam = searchParams.get('topic');
-//? is used for shortcut of if else
-const cleanTopic = topicParam ? decodeURIComponent(topicParam) : null;
-
+  const searchParams = useSearchParams();
+  // fetching topic from url
+  const topicParam = searchParams.get("topic");
+  //? is used for shortcut of if else
+  const cleanTopic = topicParam ? decodeURIComponent(topicParam) : null;
+  // New state
+  const [resumeText, setResumeText] = useState<string>("");
+  const [isParsing, setIsParsing] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -64,29 +68,30 @@ const cleanTopic = topicParam ? decodeURIComponent(topicParam) : null;
 
   //import { useRef } from "react";
 
-// function InputFocus() {
-//   const inputRef = useRef(null);
+  // function InputFocus() {
+  //   const inputRef = useRef(null);
 
-//   const focusInput = () => {
-//     inputRef.current.focus();
-//   };
+  //   const focusInput = () => {
+  //     inputRef.current.focus();
+  //   };
 
-//   return (
-//     <>
-//       <input ref={inputRef} />
-//       <button onClick={focusInput}>Focus</button>
-//     </>
-//   );
-// }
-//inputRef stores the input element
-// inputRef.current gives access to it
-
+  //   return (
+  //     <>
+  //       <input ref={inputRef} />
+  //       <button onClick={focusInput}>Focus</button>
+  //     </>
+  //   );
+  // }
+  //inputRef stores the input element
+  // inputRef.current gives access to it
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Selection states
   const [showDifficulty, setShowDifficulty] = useState<boolean>(false);
-  const [selectedDifficulty, setSelectedDifficulty] = useState<"Easy" | "Medium" | "Hard" | null>(null);
+  const [selectedDifficulty, setSelectedDifficulty] = useState<
+    "Easy" | "Medium" | "Hard" | null
+  >(null);
   const [showDuration, setShowDuration] = useState<boolean>(false);
   const [selectedDuration, setSelectedDuration] = useState<number | null>(null); // minutes
 
@@ -110,80 +115,146 @@ const cleanTopic = topicParam ? decodeURIComponent(topicParam) : null;
   const [stressScore, setStressScore] = useState<number>(0);
   const [confidenceScore, setConfidenceScore] = useState<number>(0);
   const [finalScore, setFinalScore] = useState<number | null>(null);
-const [customTopic, setCustomTopic] = useState<string | null>(null);
+  const [customTopic, setCustomTopic] = useState<string | null>(null);
   const [facesDetected, setFacesDetected] = useState<number>(0);
   const [isPaused, setIsPaused] = useState<boolean>(false);
   const [showMultiFaceModal, setShowMultiFaceModal] = useState<boolean>(false);
-  const [showSuspiciousObjectModal, setShowSuspiciousObjectModal] = useState<boolean>(false);
-  const [suspiciousObjectsList, setSuspiciousObjectsList] = useState<string[]>([]);
+  const [showSuspiciousObjectModal, setShowSuspiciousObjectModal] =
+    useState<boolean>(false);
+  const [suspiciousObjectsList, setSuspiciousObjectsList] = useState<string[]>(
+    [],
+  );
   const lastObjectAlertTimeRef = useRef<number>(0);
   const OBJECT_ALERT_COOLDOWN_MS = 10000;
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
-// useRef is often used to store values that should persist between renders without causing a re-render.
+  const hasEndedRef = useRef(false);
+  const timerActiveRef = useRef(false);
+  const hasEvaluatedRef = useRef(false);   // ← ADD THIS LINE
+  
+  // useRef is often used to store values that should persist between renders without causing a re-render.
   // ────────────────────────────────────────────────
   //  Timer Logic
   // ────────────────────────────────────────────────
-  const startInterviewTimer = (seconds: number) => {
-    setTimeLeft(seconds);
-    setIsTimerRunning(true);
-    if (timerRef.current) clearInterval(timerRef.current);
-    timerRef.current = setInterval(() => {
-      setTimeLeft((t) => {
-        if (t == null || t <= 0) {
-          if (timerRef.current) clearInterval(timerRef.current);
-          endInterviewDueToTime();
-          return 0;
-        }
-        return t - 1;
-      });
-    }, 1000);
-  };
+// Start timer
+const currentTimeRef = useRef<number | null>(null);
 
-  const endInterviewDueToTime = () => {
-    setInterviewEnded(true);
-    setIsTimerRunning(false);
-    const score = calculateFinalPresenceScore();
-    setFinalScore(score);
+const startInterviewTimer = (seconds: number) => {
+  console.log("[TIMER] Starting with", seconds, "seconds");
 
-    setMessages((prev) => [
-      ...prev,
-      {
-        text: `Interview finished!\n\nBody Language & Presence Score: ${score}%`,
-        isBot: true,
-      },
-      {
-        text: "⌛ Time's up! Interview ended automatically.",
-        isBot: true,
-      },
-    ]);
+  setTimeLeft(seconds);
+  currentTimeRef.current = seconds;
+  setIsTimerRunning(true);
+  hasEndedRef.current = false;
 
-    sendToBackend("[TIME_LIMIT_REACHED] Interview ended due to time limit");
+  if (timerRef.current) {
+    clearInterval(timerRef.current);
+    timerRef.current = null;
+  }
 
-    setTimeout(stopCamera, 3000);
-  };
-
-  const pauseTimer = () => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
+  timerRef.current = setInterval(() => {
+    if (hasEndedRef.current || currentTimeRef.current === null) {
+      return;
     }
-    setIsTimerRunning(false);
-  };
 
-  const resumeTimer = () => {
-    if (timeLeft && timeLeft > 0) {
-      setIsTimerRunning(true);
-      timerRef.current = setInterval(() => {
-        setTimeLeft((t) => (t ?? 0) - 1);
-      }, 1000);
-    }
-  };
+    const next = currentTimeRef.current - 1;
+    currentTimeRef.current = next; // update ref immediately (synchronous)
+
+    setTimeLeft(next); // update UI
+
+    console.log("[TIMER TICK] Set to:", next);
+
+   if (next <= 0) {
+  console.log("[TIMER] Reached 0 - ending");
+  clearInterval(timerRef.current!);
+  timerRef.current = null;
+  currentTimeRef.current = null;
+
+  finishInterview(); // ✅ SINGLE ENTRY POINT
+}
+  }, 1000);
+};
+// Stop/pause timer
+const pauseTimer = () => {
+  console.log("[TIMER] Pausing");
+  if (timerRef.current) {
+    clearInterval(timerRef.current);
+    timerRef.current = null;
+  }
+  setIsTimerRunning(false);
+};
+
+const resumeTimer = () => {
+  if (hasEndedRef.current || currentTimeRef.current === null || currentTimeRef.current <= 0) {
+    console.log("[TIMER] Cannot resume");
+    return;
+  }
+
+  console.log("[TIMER] Resuming from", currentTimeRef.current);
+  setIsTimerRunning(true);
+
+ timerRef.current = setInterval(() => {
+  if (hasEndedRef.current || currentTimeRef.current === null) return;
+
+  const next = currentTimeRef.current - 1;
+  currentTimeRef.current = next;
+  setTimeLeft(next);
+
+  if (next <= 0) {
+    hasEndedRef.current = true;
+    clearInterval(timerRef.current!);
+    timerRef.current = null;
+    currentTimeRef.current = null;
+
+    console.log("⏰ Time finished - Starting evaluation...");
+    // setInterviewEnded(true);
+    // stopCamera();
+
+    // setMessages((prev) => [...prev, { 
+    //   text: "⌛ Time's up! Interview ended automatically.", 
+    //   isBot: true 
+    // }]);
+
+    // // Directly call evaluation
+    // handleEvaluate().then(() => {
+    //   setTimeout(() => {
+    //     window.location.href = "/congratulations";
+    //   }, 2000);
+    // });
+
+    finishInterview();
+  }
+}, 1000);
+};
+// In endInterviewDueToTime – keep your existing logs + force redirect
+// const endInterviewDueToTime = async () => {
+//   console.log("🔴 [TIMER END] Time's up - ending interview");
+
+//   setInterviewEnded(true);
+//   setIsTimerRunning(false);
+//   stopCamera();
+
+//   setMessages((prev) => [
+//     ...prev,
+//     { text: "⌛ Time's up! Interview ended automatically.", isBot: true },
+//   ]);
+
+//   console.log("🔴 [TIMER END] Now calling handleEvaluate...");
+//   await handleEvaluate();
+
+//   console.log("🔴 [TIMER END] Redirecting to congratulations in 2 seconds...");
+//   setTimeout(() => {
+//     window.location.href = "/congratulations";
+//   }, 2000);
+// };
+
+
 
   const formatTime = (seconds: number) => {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
+    const safeSeconds = Math.max(0, seconds); // never negative
+    const m = Math.floor(safeSeconds / 60);
+    const s = safeSeconds % 60;
     return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
   };
 
@@ -191,49 +262,53 @@ const [customTopic, setCustomTopic] = useState<string | null>(null);
   //  Camera Control
   // ────────────────────────────────────────────────
   const startCamera = async () => {
-  setCameraError(null);
+    setCameraError(null);
 
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: "user",
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-      },
-      audio: true,
-    });
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: "user",
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: true,
+      });
 
-    if (videoRef.current) {
-      videoRef.current.srcObject = stream;
-      // Important: wait for 'loadedmetadata' before play
-      videoRef.current.onloadedmetadata = () => {
-        //This code is used to start playing the camera video only after the video metadata is loaded. 📷 by the browser then the camera vedio start playing
-        videoRef.current?.play().catch((err) => {
-          console.error("Auto-play failed:", err);
-          setCameraError("Video play failed - please click anywhere on page");
-        });
-      };
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        // Important: wait for 'loadedmetadata' before play
+        videoRef.current.onloadedmetadata = () => {
+          //This code is used to start playing the camera video only after the video metadata is loaded. 📷 by the browser then the camera vedio start playing
+          videoRef.current?.play().catch((err) => {
+            console.error("Auto-play failed:", err);
+            setCameraError("Video play failed - please click anywhere on page");
+          });
+        };
+      }
+
+      streamRef.current = stream;
+      //This line stores the camera/media stream inside a useRef reference variable.
+      setCameraActive(true);
+      setIsCameraOn(true);
+      setIsMicOn(true);
+    } catch (err: any) {
+      let msg = "Camera/Mic access failed";
+      if (
+        err.name === "NotAllowedError" ||
+        err.name === "PermissionDeniedError"
+      ) {
+        msg =
+          "Camera and microphone permission denied. Please allow access in browser settings.";
+      } else if (err.name === "NotFoundError") {
+        msg = "No camera or microphone found on this device.";
+      } else if (err.name === "NotReadableError") {
+        msg = "Camera is in use by another application.";
+      }
+      console.error("getUserMedia error:", err);
+      setCameraError(msg);
+      setMessages((prev) => [...prev, { text: msg, isBot: true }]);
     }
-
-    streamRef.current = stream;
-    //This line stores the camera/media stream inside a useRef reference variable.
-    setCameraActive(true);
-    setIsCameraOn(true);
-    setIsMicOn(true);
-  } catch (err: any) {
-    let msg = "Camera/Mic access failed";
-    if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
-      msg = "Camera and microphone permission denied. Please allow access in browser settings.";
-    } else if (err.name === "NotFoundError") {
-      msg = "No camera or microphone found on this device.";
-    } else if (err.name === "NotReadableError") {
-      msg = "Camera is in use by another application.";
-    }
-    console.error("getUserMedia error:", err);
-    setCameraError(msg);
-    setMessages((prev) => [...prev, { text: msg, isBot: true }]);
-  }
-};
+  };
 
   const stopCamera = () => {
     if (streamRef.current) {
@@ -268,14 +343,18 @@ const [customTopic, setCustomTopic] = useState<string | null>(null);
   useEffect(() => {
     const loadModels = async () => {
       try {
-        const MODEL_URL = "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights/";
+        const MODEL_URL =
+          "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights/";
         await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
         await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
         await faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL);
         setIsModelReady(true);
       } catch (err) {
         console.error("face-api models failed", err);
-        setMessages((p) => [...p, { text: "Emotion detection unavailable.", isBot: true }]);
+        setMessages((p) => [
+          ...p,
+          { text: "Emotion detection unavailable.", isBot: true },
+        ]);
       }
     };
     loadModels();
@@ -284,14 +363,14 @@ const [customTopic, setCustomTopic] = useState<string | null>(null);
     (async () => {
       try {
         const vision = await FilesetResolver.forVisionTasks(
-          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm",
         );
         //FilesetResolver loads the WebAssembly runtime files required for MediaPipe Vision.
         objectDetector = await ObjectDetector.createFromOptions(vision, {
           baseOptions: {
             modelAssetPath:
               "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite2/float16/latest/efficientdet_lite2.tflite",
-            delegate: "GPU",  
+            delegate: "GPU",
           },
           //GPU stands for Graphics Processing Unit. 🖥️
 
@@ -340,7 +419,11 @@ const [customTopic, setCustomTopic] = useState<string | null>(null);
       } else if (detections.length === 1) {
         const expr = detections[0].expressions;
         const smile = Math.round((expr.happy || 0) * 100);
-        const stressRaw = (expr.angry || 0) + (expr.sad || 0) + (expr.fearful || 0) + (expr.disgusted || 0);
+        const stressRaw =
+          (expr.angry || 0) +
+          (expr.sad || 0) +
+          (expr.fearful || 0) +
+          (expr.disgusted || 0);
         const stress = Math.round(stressRaw * 25);
         const conf = Math.round((expr.neutral || 0) * 100 - stress * 0.4);
 
@@ -364,15 +447,28 @@ const [customTopic, setCustomTopic] = useState<string | null>(null);
     requestAnimationFrame(detectEmotions);
   }, [cameraActive, interviewEnded, isModelReady]);
 
-  const calculateFinalPresenceScore = () => {
-    if (emotionSamples.length === 0) return 50;
-    const relevant = emotionSamples.slice(Math.floor(emotionSamples.length * 0.3));
-    const avgSmile = relevant.reduce((s, v) => s + v.smile, 0) / relevant.length;
-    const avgStress = relevant.reduce((s, v) => s + v.stress, 0) / relevant.length;
-    const avgConf = relevant.reduce((s, v) => s + v.conf, 0) / relevant.length;
-    return Math.round(avgSmile * 0.5 + (100 - avgStress) * 0.3 + avgConf * 0.2);
-  };
+const calculateFinalPresenceScore = () => {
+  if (emotionSamples.length === 0) {
+    return 65; // Neutral default (not too low)
+  }
 
+  // Take last 70% of samples to ignore initial nervousness
+  const relevantSamples = emotionSamples.slice(Math.floor(emotionSamples.length * 0.3));
+
+  const avgSmile = relevantSamples.reduce((sum, s) => sum + s.smile, 0) / relevantSamples.length;
+  const avgStress = relevantSamples.reduce((sum, s) => sum + s.stress, 0) / relevantSamples.length;
+  const avgConfidence = relevantSamples.reduce((sum, s) => sum + s.conf, 0) / relevantSamples.length;
+
+  // Simple weighted formula (you can tweak weights easily)
+  const presenceScore = Math.round(
+    avgSmile * 0.45 + 
+    (100 - avgStress) * 0.35 + 
+    avgConfidence * 0.20
+  );
+
+  // Clamp between 30 and 98
+  return Math.max(30, Math.min(98, presenceScore));
+};
   useEffect(() => {
     if (cameraActive && isModelReady) detectEmotions();
   }, [cameraActive, isModelReady, detectEmotions]);
@@ -381,31 +477,51 @@ const [customTopic, setCustomTopic] = useState<string | null>(null);
   //  Object Detection (cheating prevention)
   // ────────────────────────────────────────────────
   const detectObjects = useCallback(async () => {
-    if (!videoRef.current || !objectDetector || !cameraActive || interviewEnded) {
+    if (
+      !videoRef.current ||
+      !objectDetector ||
+      !cameraActive ||
+      interviewEnded
+    ) {
       requestAnimationFrame(detectObjects);
       return;
     }
 
     try {
-      const results = await objectDetector.detectForVideo(videoRef.current, performance.now());
+      const results = await objectDetector.detectForVideo(
+        videoRef.current,
+        performance.now(),
+      );
       const suspicious = results.detections.filter((d) => {
         const label = (d.categories[0]?.categoryName || "").toLowerCase();
         return (
-          ["cell phone", "mobile phone", "smartphone", "book", "laptop"].includes(label) &&
-          (d.categories[0]?.score ?? 0) > 0.22
+          [
+            "cell phone",
+            "mobile phone",
+            "smartphone",
+            "book",
+            "laptop",
+          ].includes(label) && (d.categories[0]?.score ?? 0) > 0.22
         );
       });
 
       if (suspicious.length > 0 && !isPaused) {
         const now = Date.now();
         if (now - lastObjectAlertTimeRef.current > OBJECT_ALERT_COOLDOWN_MS) {
-          const labels = [...new Set(suspicious.map((d) => d.categories[0]?.categoryName || "unknown"))];
+          const labels = [
+            ...new Set(
+              suspicious.map((d) => d.categories[0]?.categoryName || "unknown"),
+            ),
+          ];
           setSuspiciousObjectsList(labels);
           setShowSuspiciousObjectModal(true);
           setIsPaused(true);
           setMessages((p) => [
             ...p,
-            { text: `Suspicious object(s) detected: ${labels.join(", ")}. Please remove them.`, isBot: true },
+            {
+              text: `Suspicious object(s) detected: ${labels.join(", ")}. Please remove them.`,
+              isBot: true,
+            },
           ]);
           lastObjectAlertTimeRef.current = now;
         }
@@ -437,11 +553,10 @@ const [customTopic, setCustomTopic] = useState<string | null>(null);
   // ────────────────────────────────────────────────
 
   useEffect(() => {
-  if (cleanTopic) {
-    setShowInstructions(true); // Show instructions when topic is loaded
-  }
-}, [cleanTopic]);
-
+    if (cleanTopic) {
+      setShowInstructions(true); // Show instructions when topic is loaded
+    }
+  }, [cleanTopic]);
 
   useEffect(() => {
     if (cleanTopic) {
@@ -452,19 +567,27 @@ const [customTopic, setCustomTopic] = useState<string | null>(null);
         },
       ]);
       setShowDifficulty(true);
+    } else if (customTopic) {
+      // ← NEW: Resume was uploaded
+      setMessages([
+        {
+          text: `✅ Resume loaded! Auto topic set to **"${customTopic}"**\n\nNow:\n1. Choose difficulty\n2. Choose duration\n3. Type **"start"**`,
+          isBot: true,
+        },
+      ]);
+      setShowDifficulty(true);
+    } else {
+      // Case 2: No topic → ask user to type one
+      setMessages([
+        {
+          text: `Welcome to the AI Interview Room!\n\nPlease type the **topic** you want to be interviewed on (e.g., "React Hooks", "System Design", "JavaScript ES6").`,
+          isBot: true,
+        },
+      ]);
+      // Do NOT show difficulty yet — wait for user to provide topic
+      setShowDifficulty(false);
     }
-    else {
-    // Case 2: No topic → ask user to type one
-    setMessages([
-      {
-        text: `Welcome to the AI Interview Room!\n\nPlease type the **topic** you want to be interviewed on (e.g., "React Hooks", "System Design", "JavaScript ES6").`,
-        isBot: true,
-      },
-    ]);
-    // Do NOT show difficulty yet — wait for user to provide topic
-    setShowDifficulty(false);
-  }
-  }, [cleanTopic]);
+  }, [cleanTopic, customTopic]);
 
   // Scroll to bottom
   useEffect(() => {
@@ -475,9 +598,12 @@ const [customTopic, setCustomTopic] = useState<string | null>(null);
   //  Speech Recognition
   // ────────────────────────────────────────────────
   useEffect(() => {
-    if (!("SpeechRecognition" in window || "webkitSpeechRecognition" in window)) return;
+    if (!("SpeechRecognition" in window || "webkitSpeechRecognition" in window))
+      return;
 
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SpeechRecognition =
+      (window as any).SpeechRecognition ||
+      (window as any).webkitSpeechRecognition;
     const rec = new SpeechRecognition();
     rec.continuous = true;
     rec.interimResults = true;
@@ -518,15 +644,18 @@ const [customTopic, setCustomTopic] = useState<string | null>(null);
   const sendToBackend = async (message: string) => {
     setIsLoading(true);
     try {
+      const finalTopic =
+        cleanTopic || customTopic || "Full Stack Development (MERN/MEAN)";
       const res = await fetch("https://novatech-z95h.onrender.com/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           chat: message,
-          topic: cleanTopic,
+          topic: finalTopic,
           difficulty: selectedDifficulty,
           duration: selectedDuration,
           sessionId,
+          resumeText: resumeText || undefined, // ← new field
         }),
       });
 
@@ -535,520 +664,730 @@ const [customTopic, setCustomTopic] = useState<string | null>(null);
       const data = await res.json();
       setMessages((prev) => [...prev, { text: data.reply, isBot: true }]);
 
-      if (data.reply.toLowerCase().includes("interview complete") || data.reply.includes("ended")) {
-        setInterviewEnded(true);
-        stopCamera();
-        await handleEvaluate();
-      }
+     if (
+  data.reply.toLowerCase().includes("interview complete") ||
+  data.reply.includes("ended")
+) {
+  setInterviewEnded(true);
+  stopCamera();
+  console.log("⏳ AI said interview complete - calling handleEvaluate...");
+  await handleEvaluate();
+}
     } catch (err) {
-      setMessages((p) => [...p, { text: "Network error. Try again.", isBot: true }]);
+      setMessages((p) => [
+        ...p,
+        { text: "Network error. Try again.", isBot: true },
+      ]);
     } finally {
       setIsLoading(false);
     }
-
-
   };
 
-  // ── New: Evaluation handler ────────────────────────────────────────
-const handleEvaluate = async () => {
-  try {
-    const evalRes = await fetch("https://novatech-z95h.onrender.com/api/evaluate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sessionId,
-        topic: cleanTopic || customTopic,
-        difficulty: selectedDifficulty,
-      }),
-    });
+  const finishInterview = async () => {
+  if (hasEndedRef.current) return;
 
-    if (!evalRes.ok) throw new Error("Evaluation failed");
+  console.log("🛑 Finishing interview...");
+  hasEndedRef.current = true;
 
-    const scores = await evalRes.json();
+  setInterviewEnded(true);
+  setIsTimerRunning(false);
+  stopCamera();
 
-    // Store scores somewhere accessible (e.g. state + localStorage for redirect)
-    //storing in interviewscore and getting in congratulation page and showing the score there
-    localStorage.setItem("interviewScores", JSON.stringify({
-      overall: scores.overall || 0,
-      technical: scores.technical_accuracy || 0,
-      communication: scores.communication || 0,
-      problem_solving: scores.problem_solving || 0,
-      strengths: scores.strengths || [],
-      weaknesses: scores.weaknesses || [],
-      feedback: scores.feedback || "No detailed feedback available.",
-      topic: cleanTopic || customTopic,
-      difficulty: selectedDifficulty,
-    }));
+  setMessages((prev) => [
+    ...prev,
+    { text: "⌛ Time's up! Interview ended.", isBot: true },
+  ]);
 
-    // Optional: Show quick message
-    setMessages((prev) => [
-      ...prev,
-      { text: `Evaluation complete. Overall score: ${scores.overall || "?"}%`, isBot: true },
-    ]);
+  await handleEvaluate();
 
-    // Redirect to congratulations (with optional query params if you prefer)
-    // Option 1: Use localStorage (cleaner for complex data)
+  console.log("✅ Evaluation done, redirecting...");
+  setTimeout(() => {
     window.location.href = "/congratulations";
-
-    // Option 2: Pass via URL (limited length, but simple)
-    // window.location.href = `/congratulations?overall=${scores.overall || 0}&feedback=${encodeURIComponent(scores.feedback || '')}`;
-
-  } catch (err) {
-    console.error("Evaluation error:", err);
-    setMessages((prev) => [
-      ...prev,
-      { text: "Could not generate final score. Please try again later.", isBot: true },
-    ]);
-  }
+  }, 2000);
 };
 
+  // ── New: Evaluation handler ────────────────────────────────────────
+// ── Clean & Reliable handleEvaluate ─────────────────────────────────────
+// ── Highly Debugged handleEvaluate ─────────────────────────────────────
+const handleEvaluate = async () => {
+  console.log("🚀 handleEvaluate START");
+
+  if (hasEvaluatedRef.current) {
+    console.log("⏭️ Already evaluated");
+    return;
+  }
+
+  hasEvaluatedRef.current = true;
+
+  try {
+    const controller = new AbortController();
+
+    const timeout = setTimeout(() => {
+      controller.abort();
+      console.error("⏰ Evaluation request TIMEOUT");
+    }, 8000);
+
+    const response = await fetch(
+      "https://novatech-z95h.onrender.com/api/evaluate",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          sessionId,
+          topic: cleanTopic || customTopic || "Full Stack Development",
+          difficulty: selectedDifficulty || "Medium",
+        }),
+      }
+    );
+
+    clearTimeout(timeout);
+
+    console.log("📥 Response:", response.status);
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(errText);
+    }
+
+    const aiScores = await response.json();
+    console.log("✅ Scores:", aiScores);
+
+    localStorage.setItem("interviewScores", JSON.stringify({
+      overall: aiScores.overall || 0,
+      technical: aiScores.technical_accuracy || 0,
+      communication: aiScores.communication || 0,
+      problem_solving: aiScores.problem_solving || 0,
+      strengths: aiScores.strengths || [],
+      weaknesses: aiScores.weaknesses || [],
+      feedback: aiScores.feedback || "No feedback available.",
+    }));
+
+    const presence = calculateFinalPresenceScore();
+    localStorage.setItem("presenceScore", presence.toString());
+
+    console.log("💾 Saved all scores");
+
+  } catch (err) {
+    console.error("❌ Evaluation failed:", err);
+
+    const presence = calculateFinalPresenceScore();
+    localStorage.setItem("presenceScore", presence.toString());
+
+    console.log("⚠️ Fallback: Only presence score saved");
+  }
+};
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading || interviewEnded) return;
 
-    const text = input.trim();
-// Special case: User is providing custom topic (and no cleanTopic exists)
-  if (!cleanTopic && !customTopic && !interviewStarted) {
-    // Assume first non-command message is the topic
-    setCustomTopic(input.trim()); // store what user typed
-    setMessages((prev) => [
-      ...prev,
-      { text: input.trim(), isBot: false },
-      {
-        text: `Perfect! You've chosen **"${input.trim()}"** as your topic.\n\nNow:\n1. Choose difficulty\n2. Choose duration\n3. Type **"start"** when ready.`,
-        isBot: true,
-      },
-    ]);
-    setShowDifficulty(true); // now reveal selectors
-    setInput("");
-    return;
-  }
-    // Special commands
-    if (text.toLowerCase() === "start" && !interviewStarted) {
+    const text = input.trim().toLowerCase();
+
+    // Special case: User types "start"
+    if (text === "start" && !interviewStarted) {
       if (!selectedDifficulty || !selectedDuration) {
-        setMessages((p) => [...p, { text: "Please select difficulty and duration first.", isBot: true }]);
+        setMessages((p) => [
+          ...p,
+          { text: "Please select difficulty and duration first.", isBot: true },
+        ]);
         return;
       }
+
+      const finalTopic = cleanTopic || customTopic || "Full Stack Development";
+
       setInterviewStarted(true);
       startCamera();
       startInterviewTimer(selectedDuration * 60);
-      setMessages((p) => [...p, { text: `Starting ${selectedDifficulty} ${cleanTopic} interview (${selectedDuration} min)...`, isBot: true }]);
-      sendToBackend(`start ${selectedDifficulty} ${cleanTopic} ${selectedDuration}min`);
-    } else if (text.toLowerCase() === "stop") {
-      setInterviewEnded(true);
-      stopCamera();
-      setMessages((p) => [...p, { text: "Interview stopped by user.", isBot: true }]);
-      sendToBackend("[USER_STOPPED]");
-    } else if (isPaused) {
-      if (text.toLowerCase() === "yes" || text.toLowerCase() === "ok") {
-        setIsPaused(false);
-        setShowMultiFaceModal(false);
-        setShowSuspiciousObjectModal(false);
-        setMessages((p) => [...p, { text: "Resuming interview. Continue.", isBot: true }]);
-      } else {
-        setMessages((p) => [...p, { text: 'Type "yes" or "ok" to resume.', isBot: true }]);
-      }
-    } else {
-      setMessages((p) => [...p, { text, isBot: false }]);
-      sendToBackend(text);
-    }
-    sendToBackend(text);
 
+      setMessages((p) => [
+        ...p,
+        {
+          text: `🚀 Starting ${selectedDifficulty} interview on **${finalTopic}** using your resume...`,
+          isBot: true,
+        },
+      ]);
+
+      // sendToBackend(`start ${selectedDifficulty} ${finalTopic} ${selectedDuration}min`);
+      sendToBackend("start"); // ← ONLY "start" (important!)
+      setInput("");
+      return;
+    }
+
+    // If user is typing topic manually (when no resume or customTopic)
+    if (!cleanTopic && !customTopic && !interviewStarted) {
+      setCustomTopic(input.trim());
+      setMessages((prev) => [
+        ...prev,
+        { text: input.trim(), isBot: false },
+        {
+          text: `Perfect! Topic set to **"${input.trim()}"**\nNow choose difficulty & duration then type "start"`,
+          isBot: true,
+        },
+      ]);
+      setShowDifficulty(true);
+      setInput("");
+      return;
+    }
+
+    // ← Normal message during interview
+    setMessages((prev) => [...prev, { text: input.trim(), isBot: false }]);
+    sendToBackend(input.trim());
     setInput("");
   };
- 
-return (
-  <div className="min-h-screen bg-gradient-to-br from-gray-50 to-purple-50 dark:from-slate-950 dark:to-purple-950/40">
-    <div className="container max-w-7xl mx-auto p-6">
-      <div className="flex justify-between items-center mb-6">
-        <div className="flex items-center gap-4">
-          <Badge className="px-5 py-2 text-lg bg-green-100 text-green-700 dark:bg-green-900/50">
-            <div className="w-3 h-3 bg-green-500 rounded-full mr-2 animate-pulse" />
-            Live Interview
-          </Badge>
-          <h2 className="text-2xl font-bold">Senior React Engineer</h2>
-        </div>
+  // File input handler
+  const handleResumeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-        <div className="flex items-center gap-6">
-          {interviewStarted && timeLeft !== null && (
-            <Badge variant="outline" className="px-4 py-2 text-base font-mono">
-              {formatTime(timeLeft)}
+    setIsParsing(true);
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+      let fullText = "";
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        const pageText = content.items.map((item: any) => item.str).join(" ");
+        fullText += pageText + "\n\n";
+      }
+
+      fullText = fullText
+        .replace(/mediaimage.*?}/g, "")
+        .replace(/�/g, "•")
+        .replace(/\s+/g, " ")
+        .trim();
+
+      setResumeText(fullText);
+
+      // 🔥 AUTO SET TOPIC FROM RESUME
+      const autoTopic = "Full Stack Development (MERN/MEAN)"; // You can make it smarter later
+
+      setCustomTopic(autoTopic);
+      setShowDifficulty(true);
+      setMessages((prev) => [
+        ...prev,
+        {
+          text: `✅ Resume parsed successfully!\n📊 ${fullText.length} characters extracted\n\n🎯 **Topic auto-detected:** ${autoTopic}\n\nNow select difficulty + duration and type "start"`,
+          isBot: true,
+        },
+      ]);
+
+      // Show success badge
+      console.log("Resume loaded:", fullText.substring(0, 200));
+    } catch (err: any) {
+      console.error(err);
+      setMessages((prev) => [
+        ...prev,
+        { text: "❌ PDF parsing failed. Try again.", isBot: true },
+      ]);
+    } finally {
+      setIsParsing(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-purple-50 dark:from-slate-950 dark:to-purple-950/40">
+      <div className="container max-w-7xl mx-auto p-6">
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-4">
+            <Badge className="px-5 py-2 text-lg bg-green-100 text-green-700 dark:bg-green-900/50">
+              <div className="w-3 h-3 bg-green-500 rounded-full mr-2 animate-pulse" />
+              Live Interview
             </Badge>
-          )}
-
-          <div className="flex gap-3">
-            <Button
-              variant="outline"
-              size="lg"
-              onClick={toggleCamera}
-              className="gap-2"
-              disabled={!interviewStarted}
-            >
-              {isCameraOn ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
-              {isCameraOn ? "Camera On" : "Camera Off"}
-            </Button>
-
-            <Button
-              variant={isMicOn ? "outline" : "destructive"}
-              size="lg"
-              onClick={toggleMic}
-              disabled={!interviewStarted}
-            >
-              {isMicOn ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
-            </Button>
+            <h2 className="text-2xl font-bold">Senior React Engineer</h2>
           </div>
-        </div>
-      </div>
-        {isLoading && (
-              <div className="text-center text-gray-500 italic">
-                Interviewer thinking...
-              </div>
+
+          <div className="flex items-center gap-6">
+            {interviewStarted && timeLeft !== null && (
+              <Badge
+                variant="outline"
+                className="px-4 py-2 text-base font-mono"
+              >
+                {formatTime(timeLeft)}
+              </Badge>
             )}
 
-      {cameraError && (
-  <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-50 text-center p-8">
-    <div className="text-white text-xl max-w-md">
-      <p className="font-bold mb-4 text-red-400">Camera Error</p>
-      <p>{cameraError}</p>
-      <p className="text-sm mt-6 opacity-80">
-        Refresh the page and allow camera access when prompted.
-      </p>
-    </div>
-  </div>
-)}
-{showInstructions && cleanTopic && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-6">
-          <Card className="max-w-3xl w-full max-h-[90vh] overflow-y-auto bg-white/95 dark:bg-slate-900/95 border border-purple-500/30 rounded-3xl shadow-2xl p-10">
-            <h2 className="text-3xl font-bold text-center mb-8 bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-              Important Interview Instructions & Rules
-            </h2>
-
-            <div className="space-y-8 text-lg leading-relaxed">
-              <div>
-                <h3 className="text-xl font-semibold mb-3 text-purple-700 dark:text-purple-400">
-                  Welcome to your AI-Powered Interview
-                </h3>
-                <p>
-                  You have selected: <strong className="text-purple-600">{cleanTopic}</strong>
-                </p>
-                <p className="mt-2">
-                  This is a realistic, proctored interview simulation. Your performance, body language, and environment will be evaluated.
-                </p>
-              </div>
-
-              <div>
-                <h3 className="text-xl font-semibold mb-3 text-purple-700 dark:text-purple-400">
-                  What You Need to Do
-                </h3>
-                <ul className="list-disc pl-6 space-y-2">
-                  <li>Allow camera and microphone access when prompted</li>
-                  <li>Keep your face clearly visible and centered at all times</li>
-                  <li>Speak clearly and naturally — no reading from scripts</li>
-                  <li>Stay in frame — do not leave or turn away from the camera</li>
-                  <li>Answer honestly and professionally</li>
-                </ul>
-              </div>
-
-              <div>
-                <h3 className="text-xl font-semibold mb-3 text-purple-700 dark:text-purple-400">
-                  Rules & Prohibited Actions
-                </h3>
-                <ul className="list-disc pl-6 space-y-2 text-red-600 dark:text-red-400 font-medium">
-                  <li>No looking at phone, books, notes, or second screens</li>
-                  <li>No other people in the room or visible on camera</li>
-                  <li>No talking to anyone else during the interview</li>
-                  <li>No external help or AI assistance (other than this interviewer)</li>
-                  <li>Do not cover or disable the camera/microphone</li>
-                </ul>
-                <p className="mt-4 text-sm text-muted-foreground">
-                  Violation of rules may pause the interview or affect your score.
-                </p>
-              </div>
-
-              <div>
-                <h3 className="text-xl font-semibold mb-3 text-purple-700 dark:text-purple-400">
-                  How Scoring Works
-                </h3>
-                <ul className="list-disc pl-6 space-y-2">
-                  <li>Technical knowledge & communication</li>
-                  <li>Body language & confidence (smile, eye contact, calmness)</li>
-                  <li>Environment check (no suspicious objects)</li>
-                  <li>Final presence score shown at the end</li>
-                </ul>
-              </div>
-
-              <div className="text-center mt-10">
-                <p className="text-lg font-medium mb-6">
-                  By continuing, you agree to follow all rules and allow real-time monitoring.
-                </p>
-
-                <Button
-                  size="lg"
-                  className="px-12 py-7 text-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 shadow-xl"
-                  onClick={() => setShowInstructions(false)}
-                >
-                  I Understand & Proceed
-                </Button>
-              </div>
-            </div>
-          </Card>
-        </div>
-      )}
-      {/* ─── Configuration Screen ─── shown until interview starts ─── */}
-      {!interviewStarted && (
-        <Card className="mb-10 p-8 bg-white/90 dark:bg-black/70 backdrop-blur-xl border border-gray-200/50 dark:border-white/10 rounded-3xl shadow-2xl max-w-4xl mx-auto">
-          <h3 className="text-2xl font-bold text-center mb-8 bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-            Let's set up your interview
-          </h3>
-
-          <div className="grid md:grid-cols-2 gap-8 mb-10">
-            <div>
-              <label className="block text-base font-medium mb-3">Difficulty Level</label>
-              <Select
-                value={selectedDifficulty ?? undefined}
-                onValueChange={(v) => setSelectedDifficulty(v as "Easy" | "Medium" | "Hard")}
-              >
-                <SelectTrigger className="h-14 text-lg">
-                  <SelectValue placeholder="Choose difficulty" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Easy">Easy</SelectItem>
-                  <SelectItem value="Medium">Medium</SelectItem>
-                  <SelectItem value="Hard">Hard</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <label className="block text-base font-medium mb-3">Duration</label>
-              <Select
-                value={selectedDuration?.toString() ?? undefined}
-                onValueChange={(v) => setSelectedDuration(Number(v))}
-              >
-                <SelectTrigger className="h-14 text-lg">
-                  <SelectValue placeholder="Choose duration" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="10">10 minutes</SelectItem>
-                  <SelectItem value="20">20 minutes</SelectItem>
-                  <SelectItem value="30">30 minutes</SelectItem>
-                  <SelectItem value="45">45 minutes</SelectItem>
-                  <SelectItem value="60">60 minutes</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="text-center text-muted-foreground text-lg">
-            {selectedDifficulty && selectedDuration ? (
-              <p>Everything is ready! Type <strong className="text-purple-600 font-semibold">"start"</strong> below to begin the interview</p>
-            ) : (
-              <p>Please select difficulty and duration to continue</p>
-            )}
-          </div>
-          
-        </Card>
-      )}
-
-      <div className="grid lg:grid-cols-2 gap-8">
-        {/* LEFT: Chat */}
-        <Card className="h-[82vh] flex flex-col bg-white/90 dark:bg-black/70 backdrop-blur-xl border border-gray-200/50 dark:border-white/10">
-         {cameraActive && (
-            <div className="absolute top-3 left-3 bg-black/65 text-white text-sm px-3 py-2 rounded-md font-mono z-10 shadow" style={{marginLeft:"-10pc"}}>
-              <div>😊 Smile: {smileScore.toFixed(0)}%</div>
-              <div className={stressScore > 60 ? "text-red-400" : "text-white"}>
-                😰 Stress: {stressScore.toFixed(0)}%
-              </div>
-              <div
-                className={
-                  confidenceScore > 60 ? "text-blue-400" : "text-white"
-                }
-              >
-                💪 Conf: {confidenceScore.toFixed(0)}%
-              </div>
-            </div>
-          )}
-          <div className="p-6 border-b">
-            <div className="flex items-center gap-4">
-              <Avatar>
-                <AvatarFallback className="bg-gradient-to-br from-purple-600 to-pink-600 text-white text-xl font-bold">
-                  N
-                </AvatarFallback>
-              </Avatar>
-              <div>
-                <p className="font-bold text-lg">Nova AI Interviewer</p>
-                <p className="text-sm text-muted-foreground">Real-time evaluation</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-6 space-y-6">
-            {messages.map((msg, index) => (
-              <div key={index} className={`flex gap-4 ${msg.isBot ? "" : "justify-end"}`}>
-                {msg.isBot && (
-                  <Avatar>
-                    <AvatarFallback className="bg-gradient-to-br from-purple-600 to-pink-600 text-white">
-                      N
-                    </AvatarFallback>
-                  </Avatar>
-                )}
-                <div
-                  className={`max-w-xl ${
-                    msg.isBot
-                      ? "bg-gray-100 dark:bg-white/10"
-                      : "bg-gradient-to-r from-purple-600 to-pink-600 text-white"
-                  } px-6 py-4 rounded-2xl shadow-lg text-lg whitespace-pre-line`}
-                >
-                  {msg.text}
-                </div>
-                {!msg.isBot && (
-                  <Avatar>
-                    <AvatarFallback className="bg-gray-400 text-white">U</AvatarFallback>
-                  </Avatar>
-                )}
-              </div>
-            ))}
-            <div ref={messagesEndRef} />
-          </div>
-
-          <div className="p-6 border-t">
-            <form onSubmit={handleSubmit} className="flex gap-4 items-end">
+            <div className="flex gap-3">
               <Button
-                type="button"
+                variant="outline"
                 size="lg"
-                variant={isListening ? "default" : "outline"}
-                onClick={toggleVoiceInput}
-                className={`gap-2 ${isListening ? "bg-red-600 hover:bg-red-700 animate-pulse" : ""}`}
-                disabled={isPaused || interviewEnded}
+                onClick={toggleCamera}
+                className="gap-2"
+                disabled={!interviewStarted}
               >
-                <Mic className="h-6 w-6" />
-                {isListening ? "Listening..." : "Speak"}
+                {isCameraOn ? (
+                  <Video className="h-5 w-5" />
+                ) : (
+                  <VideoOff className="h-5 w-5" />
+                )}
+                {isCameraOn ? "Camera On" : "Camera Off"}
               </Button>
 
               <Button
-                type="button"
-                size="lg"
                 variant={isMicOn ? "outline" : "destructive"}
+                size="lg"
                 onClick={toggleMic}
                 disabled={!interviewStarted}
               >
-                {isMicOn ? <Mic className="h-6 w-6" /> : <MicOff className="h-6 w-6" />}
+                {isMicOn ? (
+                  <Mic className="h-5 w-5" />
+                ) : (
+                  <MicOff className="h-5 w-5" />
+                )}
               </Button>
-
-              <Textarea
-                placeholder={
-                  isPaused
-                    ? 'Type "yes" or "ok" to continue...'
-                    : interviewStarted
-                    ? "Type your answer or click Speak to dictate..."
-                    : "Select options above, then type 'start' to begin"
-                }
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                className="min-h-32 resize-none flex-1"
-                disabled={isPaused || interviewEnded}
-              />
-
-              <Button
-                type="submit"
-                size="lg"
-                disabled={!input.trim() || isLoading || interviewEnded || isPaused}
-                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 min-w-[70px]"
-              >
-                <Send className="h-6 w-6" />
-              </Button>
-            </form>
-
-            {isListening && (
-              <p className="text-center mt-4 text-green-600 font-semibold animate-pulse">
-                🎤 Listening... Speak clearly!
-              </p>
-            )}
+            </div>
           </div>
-        </Card>
+        </div>
+        {isLoading && (
+          <div className="text-center text-gray-500 italic">
+            Interviewer thinking...
+          </div>
+        )}
 
-        {/* RIGHT: Video + overlay states */}
-        <div className="space-y-6">
-          <Card className="rounded-2xl overflow-hidden shadow-2xl bg-gray-900 relative">
-            <div className="relative aspect-video" style={{ height: "34pc" }}>
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="w-full h-full object-cover scale-x-[-1]"
-              />
+        {cameraError && (
+          <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-50 text-center p-8">
+            <div className="text-white text-xl max-w-md">
+              <p className="font-bold mb-4 text-red-400">Camera Error</p>
+              <p>{cameraError}</p>
+              <p className="text-sm mt-6 opacity-80">
+                Refresh the page and allow camera access when prompted.
+              </p>
+            </div>
+          </div>
+        )}
+        {showInstructions && cleanTopic && (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-6">
+            <Card className="max-w-3xl w-full max-h-[90vh] overflow-y-auto bg-white/95 dark:bg-slate-900/95 border border-purple-500/30 rounded-3xl shadow-2xl p-10">
+              <h2 className="text-3xl font-bold text-center mb-8 bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+                Important Interview Instructions & Rules
+              </h2>
 
-              {/* Before interview started */}
-              {!interviewStarted && (
-                <div className="absolute inset-0 bg-black/70 flex items-center justify-center z-40">
-                  <p className="text-white text-3xl font-bold text-center px-8">
-                    Camera will start automatically when you type "start"
+              <div className="space-y-8 text-lg leading-relaxed">
+                <div>
+                  <h3 className="text-xl font-semibold mb-3 text-purple-700 dark:text-purple-400">
+                    Welcome to your AI-Powered Interview
+                  </h3>
+                  <p>
+                    You have selected:{" "}
+                    <strong className="text-purple-600">{cleanTopic}</strong>
+                  </p>
+                  <p className="mt-2">
+                    This is a realistic, proctored interview simulation. Your
+                    performance, body language, and environment will be
+                    evaluated.
                   </p>
                 </div>
-              )}
 
-              {/* Camera manually off */}
-              {interviewStarted && !isCameraOn && (
-                <div className="absolute inset-0 bg-black/90 flex items-center justify-center z-40">
-                  <p className="text-white text-3xl font-bold">
-                    CAMERA MANUALLY TURNED OFF
+                <div>
+                  <h3 className="text-xl font-semibold mb-3 text-purple-700 dark:text-purple-400">
+                    What You Need to Do
+                  </h3>
+                  <ul className="list-disc pl-6 space-y-2">
+                    <li>Allow camera and microphone access when prompted</li>
+                    <li>
+                      Keep your face clearly visible and centered at all times
+                    </li>
+                    <li>
+                      Speak clearly and naturally — no reading from scripts
+                    </li>
+                    <li>
+                      Stay in frame — do not leave or turn away from the camera
+                    </li>
+                    <li>Answer honestly and professionally</li>
+                  </ul>
+                </div>
+
+                <div>
+                  <h3 className="text-xl font-semibold mb-3 text-purple-700 dark:text-purple-400">
+                    Rules & Prohibited Actions
+                  </h3>
+                  <ul className="list-disc pl-6 space-y-2 text-red-600 dark:text-red-400 font-medium">
+                    <li>
+                      No looking at phone, books, notes, or second screens
+                    </li>
+                    <li>No other people in the room or visible on camera</li>
+                    <li>No talking to anyone else during the interview</li>
+                    <li>
+                      No external help or AI assistance (other than this
+                      interviewer)
+                    </li>
+                    <li>Do not cover or disable the camera/microphone</li>
+                  </ul>
+                  <p className="mt-4 text-sm text-muted-foreground">
+                    Violation of rules may pause the interview or affect your
+                    score.
                   </p>
                 </div>
-              )}
 
-              {/* Final score overlay */}
-              {interviewEnded && finalScore !== null && (
-                <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center text-white z-50">
-                  <h2 className="text-4xl font-bold mb-6">Interview Complete</h2>
-                  <p className="text-7xl font-extrabold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-                    {finalScore}%
-                  </p>
-                  <p className="text-2xl mt-4">Presence & Confidence Score</p>
+                <div>
+                  <h3 className="text-xl font-semibold mb-3 text-purple-700 dark:text-purple-400">
+                    How Scoring Works
+                  </h3>
+                  <ul className="list-disc pl-6 space-y-2">
+                    <li>Technical knowledge & communication</li>
+                    <li>
+                      Body language & confidence (smile, eye contact, calmness)
+                    </li>
+                    <li>Environment check (no suspicious objects)</li>
+                    <li>Final presence score shown at the end</li>
+                  </ul>
                 </div>
+
+                <div className="text-center mt-10">
+                  <p className="text-lg font-medium mb-6">
+                    By continuing, you agree to follow all rules and allow
+                    real-time monitoring.
+                  </p>
+
+                  <Button
+                    size="lg"
+                    className="px-12 py-7 text-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 shadow-xl"
+                    onClick={() => setShowInstructions(false)}
+                  >
+                    I Understand & Proceed
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          </div>
+        )}
+        {/* ─── Configuration Screen ─── shown until interview starts ─── */}
+        {!interviewStarted && (
+          <Card className="mb-10 p-8 bg-white/90 dark:bg-black/70 backdrop-blur-xl border border-gray-200/50 dark:border-white/10 rounded-3xl shadow-2xl max-w-4xl mx-auto">
+            <h3 className="text-2xl font-bold text-center mb-8 bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+              Let's set up your interview
+            </h3>
+
+            <div className="grid md:grid-cols-2 gap-8 mb-10">
+              <div>
+                <label className="block text-base font-medium mb-3">
+                  Difficulty Level
+                </label>
+                <Select
+                  value={selectedDifficulty ?? undefined}
+                  onValueChange={(v) =>
+                    setSelectedDifficulty(v as "Easy" | "Medium" | "Hard")
+                  }
+                >
+                  <SelectTrigger className="h-14 text-lg">
+                    <SelectValue placeholder="Choose difficulty" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Easy">Easy</SelectItem>
+                    <SelectItem value="Medium">Medium</SelectItem>
+                    <SelectItem value="Hard">Hard</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="block text-base font-medium mb-3">
+                  Duration
+                </label>
+                <Select
+                  value={selectedDuration?.toString() ?? undefined}
+                  onValueChange={(v) => setSelectedDuration(Number(v))}
+                >
+                  <SelectTrigger className="h-14 text-lg">
+                    <SelectValue placeholder="Choose duration" />
+                  </SelectTrigger>
+                  <SelectContent>
+                   <SelectItem value="1">1 minutes</SelectItem>
+                    <SelectItem value="10">10 minutes</SelectItem>
+                    <SelectItem value="20">20 minutes</SelectItem>
+                    <SelectItem value="30">30 minutes</SelectItem>
+                    <SelectItem value="45">45 minutes</SelectItem>
+                    <SelectItem value="60">60 minutes</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="text-center text-muted-foreground text-lg">
+              {selectedDifficulty && selectedDuration ? (
+                <p>
+                  Everything is ready! Type{" "}
+                  <strong className="text-purple-600 font-semibold">
+                    "start"
+                  </strong>{" "}
+                  below to begin the interview
+                </p>
+              ) : (
+                <p>Please select difficulty and duration to continue</p>
               )}
             </div>
           </Card>
+        )}
+        {!cleanTopic && !customTopic && (
+          <div className="mb-6">
+            <label className="block text-lg font-medium mb-2">
+              Upload your Resume (PDF)
+            </label>
+            <input
+              type="file"
+              accept=".pdf"
+              onChange={handleResumeUpload}
+              className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
+            />
+            {isParsing && (
+              <p className="text-purple-600 mt-2">Parsing resume...</p>
+            )}
+          </div>
+        )}
+
+        <div className="grid lg:grid-cols-2 gap-8">
+          {/* LEFT: Chat */}
+          <Card className="h-[82vh] flex flex-col bg-white/90 dark:bg-black/70 backdrop-blur-xl border border-gray-200/50 dark:border-white/10">
+            {cameraActive && (
+              <div
+                className="absolute top-3 left-3 bg-black/65 text-white text-sm px-3 py-2 rounded-md font-mono z-10 shadow"
+                style={{ marginLeft: "-10pc" }}
+              >
+                <div>😊 Smile: {smileScore.toFixed(0)}%</div>
+                <div
+                  className={stressScore > 60 ? "text-red-400" : "text-white"}
+                >
+                  😰 Stress: {stressScore.toFixed(0)}%
+                </div>
+                <div
+                  className={
+                    confidenceScore > 60 ? "text-blue-400" : "text-white"
+                  }
+                >
+                  💪 Conf: {confidenceScore.toFixed(0)}%
+                </div>
+              </div>
+            )}
+            <div className="p-6 border-b">
+              <div className="flex items-center gap-4">
+                <Avatar>
+                  <AvatarFallback className="bg-gradient-to-br from-purple-600 to-pink-600 text-white text-xl font-bold">
+                    N
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <p className="font-bold text-lg">Nova AI Interviewer</p>
+                  <p className="text-sm text-muted-foreground">
+                    Real-time evaluation
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {messages.map((msg, index) => (
+                <div
+                  key={index}
+                  className={`flex gap-4 ${msg.isBot ? "" : "justify-end"}`}
+                >
+                  {msg.isBot && (
+                    <Avatar>
+                      <AvatarFallback className="bg-gradient-to-br from-purple-600 to-pink-600 text-white">
+                        N
+                      </AvatarFallback>
+                    </Avatar>
+                  )}
+                  <div
+                    className={`max-w-xl ${
+                      msg.isBot
+                        ? "bg-gray-100 dark:bg-white/10"
+                        : "bg-gradient-to-r from-purple-600 to-pink-600 text-white"
+                    } px-6 py-4 rounded-2xl shadow-lg text-lg whitespace-pre-line`}
+                  >
+                    {msg.text}
+                  </div>
+                  {!msg.isBot && (
+                    <Avatar>
+                      <AvatarFallback className="bg-gray-400 text-white">
+                        U
+                      </AvatarFallback>
+                    </Avatar>
+                  )}
+                </div>
+              ))}
+              <div ref={messagesEndRef} />
+            </div>
+{/* Temporary Test Button - Remove later */}
+{interviewStarted && !interviewEnded && (
+  <div className="p-4 border-t bg-yellow-100 dark:bg-yellow-900/30">
+    <Button 
+      onClick={async () => {
+        console.log("🧪 Test Button Clicked - Calling handleEvaluate");
+        setInterviewEnded(true);
+        stopCamera();
+        await handleEvaluate();
+        setTimeout(() => window.location.href = "/congratulations", 1500);
+      }}
+      className="w-full bg-red-600 hover:bg-red-700"
+    >
+      🧪 TEST: Run handleEvaluate Now
+    </Button>
+  </div>
+)}
+            <div className="p-6 border-t">
+              <form onSubmit={handleSubmit} className="flex gap-4 items-end">
+                <Button
+                  type="button"
+                  size="lg"
+                  variant={isListening ? "default" : "outline"}
+                  onClick={toggleVoiceInput}
+                  className={`gap-2 ${isListening ? "bg-red-600 hover:bg-red-700 animate-pulse" : ""}`}
+                  disabled={isPaused || interviewEnded}
+                >
+                  <Mic className="h-6 w-6" />
+                  {isListening ? "Listening..." : "Speak"}
+                </Button>
+
+                <Button
+                  type="button"
+                  size="lg"
+                  variant={isMicOn ? "outline" : "destructive"}
+                  onClick={toggleMic}
+                  disabled={!interviewStarted}
+                >
+                  {isMicOn ? (
+                    <Mic className="h-6 w-6" />
+                  ) : (
+                    <MicOff className="h-6 w-6" />
+                  )}
+                </Button>
+
+                <Textarea
+                  placeholder={
+                    isPaused
+                      ? 'Type "yes" or "ok" to continue...'
+                      : interviewStarted
+                        ? "Type your answer or click Speak to dictate..."
+                        : "Select options above, then type 'start' to begin"
+                  }
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  className="min-h-32 resize-none flex-1"
+                  disabled={isPaused || interviewEnded}
+                />
+
+                <Button
+                  type="submit"
+                  size="lg"
+                  disabled={
+                    !input.trim() || isLoading || interviewEnded || isPaused 
+                  }
+                  className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 min-w-[70px]"
+                >
+                  <Send className="h-6 w-6" />
+                </Button>
+              </form>
+
+              {isListening && (
+                <p className="text-center mt-4 text-green-600 font-semibold animate-pulse">
+                  🎤 Listening... Speak clearly!
+                </p>
+              )}
+            </div>
+          </Card>
+
+          {/* RIGHT: Video + overlay states */}
+          <div className="space-y-6">
+            <Card className="rounded-2xl overflow-hidden shadow-2xl bg-gray-900 relative">
+              <div className="relative aspect-video" style={{ height: "34pc" }}>
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="w-full h-full object-cover scale-x-[-1]"
+                />
+
+                {/* Before interview started */}
+                {!interviewStarted && (
+                  <div className="absolute inset-0 bg-black/70 flex items-center justify-center z-40">
+                    <p className="text-white text-3xl font-bold text-center px-8">
+                      Camera will start automatically when you type "start"
+                    </p>
+                  </div>
+                )}
+
+                {/* Camera manually off */}
+                {interviewStarted && !isCameraOn && (
+                  <div className="absolute inset-0 bg-black/90 flex items-center justify-center z-40">
+                    <p className="text-white text-3xl font-bold">
+                      CAMERA MANUALLY TURNED OFF
+                    </p>
+                  </div>
+                )}
+
+                {interviewStarted && timeLeft !== null && (
+                  <Badge
+                    variant="outline"
+                    className="px-4 py-2 text-base font-mono"
+                  >
+                    {interviewEnded ? "00:00" : formatTime(timeLeft)}
+                  </Badge>
+                )}
+
+                {/* Final score overlay */}
+                {interviewEnded && finalScore !== null && (
+                  <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center text-white z-50">
+                    <h2 className="text-4xl font-bold mb-6">
+                      Interview Complete
+                    </h2>
+                    <p className="text-7xl font-extrabold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+                      {finalScore}%
+                    </p>
+                    <p className="text-2xl mt-4">Presence & Confidence Score</p>
+                  </div>
+                )}
+              </div>
+            </Card>
+          </div>
         </div>
       </div>
+
+      {/* Pause modal – same style */}
+      {(showMultiFaceModal || showSuspiciousObjectModal) && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 backdrop-blur-sm">
+          <Card className="p-10 max-w-lg text-center bg-white/95 dark:bg-slate-900/95 border border-purple-500/30 rounded-3xl shadow-2xl">
+            <h2 className="text-3xl font-bold text-red-600 mb-6">
+              {showMultiFaceModal
+                ? "Multiple Faces Detected"
+                : "Suspicious Object Detected"}
+            </h2>
+            <p className="text-xl mb-8 leading-relaxed">
+              {showMultiFaceModal
+                ? "Please make sure only you are visible during the interview."
+                : `Please remove: ${suspiciousObjectsList.join(", ")} from view.`}
+            </p>
+            <p className="text-lg text-muted-foreground mb-10">
+              Type <strong>"yes"</strong> or <strong>"ok"</strong> to resume
+            </p>
+            <Button
+              size="lg"
+              onClick={() => {
+                setIsPaused(false);
+                setShowMultiFaceModal(false);
+                setShowSuspiciousObjectModal(false);
+              }}
+              className="px-12 py-7 text-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+            >
+              I've Fixed It
+            </Button>
+          </Card>
+        </div>
+      )}
+
+      {/* Exit button */}
+      <button className="rounded-lg text-black bg-slate-500 hover:bg-slate-600 w-28 h-12 fixed bottom-8 right-8 flex items-center justify-center shadow-lg pl-3 text-base font-medium">
+        <Link href="/congratulations">Exit</Link>
+        <MoveRight className="ml-3 h-5 w-5" />
+      </button>
+      {resumeText && (
+        <Badge variant="outline" className="ml-2 bg-green-950 text-green-300">
+          Resume loaded ({(resumeText.length / 1000).toFixed(1)} k chars)
+        </Badge>
+      )}
     </div>
-
-    {/* Pause modal – same style */}
-    {(showMultiFaceModal || showSuspiciousObjectModal) && (
-      <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 backdrop-blur-sm">
-        <Card className="p-10 max-w-lg text-center bg-white/95 dark:bg-slate-900/95 border border-purple-500/30 rounded-3xl shadow-2xl">
-          <h2 className="text-3xl font-bold text-red-600 mb-6">
-            {showMultiFaceModal ? "Multiple Faces Detected" : "Suspicious Object Detected"}
-          </h2>
-          <p className="text-xl mb-8 leading-relaxed">
-            {showMultiFaceModal
-              ? "Please make sure only you are visible during the interview."
-              : `Please remove: ${suspiciousObjectsList.join(", ")} from view.`}
-          </p>
-          <p className="text-lg text-muted-foreground mb-10">
-            Type <strong>"yes"</strong> or <strong>"ok"</strong> to resume
-          </p>
-          <Button
-            size="lg"
-            onClick={() => {
-              setIsPaused(false);
-              setShowMultiFaceModal(false);
-              setShowSuspiciousObjectModal(false);
-            }}
-            className="px-12 py-7 text-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
-          >
-            I've Fixed It
-          </Button>
-        </Card>
-      </div>
-    )}
-
-    {/* Exit button */}
-    <button className="rounded-lg text-black bg-slate-500 hover:bg-slate-600 w-28 h-12 fixed bottom-8 right-8 flex items-center justify-center shadow-lg pl-3 text-base font-medium">
-      <Link href="/congratulations">Exit</Link>
-      <MoveRight className="ml-3 h-5 w-5" />
-    </button>
-  </div>
-);
+  );
 }
-

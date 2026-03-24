@@ -36,7 +36,7 @@ setInterval(() => {
 }, 30 * 60 * 1000);
 
 app.post("/api/chat", async (req, res) => {
-  const { chat: userMessageRaw, topic, difficulty, sessionId } = req.body;
+  const { chat: userMessageRaw, topic, difficulty, sessionId,resumeText="", } = req.body;
 
   if (!sessionId) return res.status(400).json({ reply: "Missing sessionId" });
   if (!topic?.trim()) return res.json({ reply: "Error: No interview topic selected." });
@@ -53,6 +53,23 @@ app.post("/api/chat", async (req, res) => {
   }
 
   history.push({ role: "user", content: effectiveUserMessage });
+  let resumeSection = "";
+  if (resumeText?.trim().length > 100) {
+    const safeResume = resumeText.trim().substring(0, 9000);
+    resumeSection = `
+Candidate's actual experience from uploaded resume:
+--------------------------------------------------------------------------------
+${safeResume}
+--------------------------------------------------------------------------------
+
+CRITICAL INSTRUCTIONS:
+• You MUST personalize almost every question using information from the resume when possible.
+• Refer to specific projects, companies, technologies, durations, roles mentioned in the resume.
+• Example: if resume says "Developed e-commerce platform using Next.js and Stripe", ask about SSR vs CSR trade-offs, payment webhook handling, etc.
+• If resume mentions no relevant experience for this topic → fall back to standard questions.
+• Keep using resume context for the ENTIRE interview — do NOT forget it after the first few questions.
+`.trim();
+  }
 
   const messages = [
     {
@@ -64,6 +81,8 @@ Topic: "${topic}"
 You MUST ONLY ask questions about "${topic}". Never go off-topic.
 
 Difficulty: ${difficulty || "Medium"} — follow strictly!
+
+${resumeSection}
 
 Easy: basic definitions, simple concepts (e.g. "What is useState?")
 Medium: intermediate + practical (e.g. "Explain useEffect cleanup?")
@@ -78,6 +97,7 @@ Rules (must obey):
 - ONLY when user says "stop" or "done" → reply exactly: "INTERVIEW_COMPLETE" followed by a short neutral message.
 - Keep replies **very short**: just the question (or end message).
 - Vary / shuffle questions — no fixed list or repeats.
+- Ask different questions every time. Don't repeat the questions.
 - No chit-chat, greetings, or extra text.
 `.trim(),
     },
