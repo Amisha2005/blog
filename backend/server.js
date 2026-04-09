@@ -4,6 +4,7 @@ const { Groq } = require("groq-sdk");
 const app = express();
 const PORT = 5000;
 const connectDb = require("./utils/db");
+const seedLocalUsersIfNeeded = require("./utils/seedUsers");
 require("dotenv").config();
 const cors = require("cors");
 const authRoute = require("./Router/auth-router");
@@ -235,7 +236,8 @@ Return **valid JSON only**, no markdown, no extra text:
 
 
 connectDb()
-  .then(() => {
+  .then(async () => {
+    await seedLocalUsersIfNeeded();
     app.listen(PORT, () => {
       console.log(`Server running on http://localhost:${PORT}`);
     });
