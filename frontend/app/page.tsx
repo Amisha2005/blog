@@ -76,18 +76,6 @@ export default function Home() {
           <p className="max-w-xl text-lg text-muted-foreground md:text-xl">
             {featuredPost.excerpt}
           </p>
-
-          <div className="flex items-center gap-3 text-sm text-muted-foreground">
-            <Avatar className="h-11 w-11 ring-2 ring-sky-500/20">
-              <AvatarImage src={featuredPost.avatar} />
-              <AvatarFallback>AN</AvatarFallback>
-            </Avatar>
-            <div>
-              <p className="font-semibold text-foreground">{featuredPost.author}</p>
-              <p>{featuredPost.date}</p>
-            </div>
-          </div>
-
           <Button
             size="lg"
             className="animate-glow rounded-xl bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-500 px-7 text-white shadow-lg shadow-sky-600/20"

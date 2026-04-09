@@ -9,7 +9,7 @@ import { useAuth } from "@/app/Auth";
 
 const baseNavItems = [
   { name: "Home", href: "/" },
-  { name: "Articles", href: "/articles" },
+  { name: "Interview Topics", href: "/articles" },
   { name: "About", href: "/about" },
 ];
 

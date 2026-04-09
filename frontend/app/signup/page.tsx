@@ -13,20 +13,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import Link from "next/link";
-import { Github, Chrome, Mail, Sparkles, Sun, Moon } from "lucide-react";
-import { useTheme } from "next-themes";
-import { useEffect, useState } from "react";
+import { Github, Chrome, Mail, Sparkles } from "lucide-react";
+import { useState } from "react";
 import { useAuth } from "../Auth";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
 
 export default function SignUpPage() {
   const router = useRouter();
-  const { theme, setTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-
-  // Prevent hydration mismatch
-  useEffect(() => setMounted(true), []);
 
   const [user, setUser] = useState({
     username: "",
@@ -83,18 +77,6 @@ export default function SignUpPage() {
           <div className="absolute inset-0 bg-gradient-to-br from-purple-400/5 via-transparent to-pink-400/5 dark:from-purple-600/10 dark:to-pink-600/10 rounded-2xl" />
 
           <CardHeader className="relative z-10 text-center pt-10 pb-8">
-            {/* Theme Toggle Button */}
-            {mounted && (
-              <button
-                onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-                className="absolute top-6 right-6 p-2 rounded-lg bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 transition-all"
-                aria-label="Toggle theme"
-              >
-                <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-                <Moon className="absolute inset-0 h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-              </button>
-            )}
-
             <div className="mx-auto w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-500 dark:from-purple-400 dark:to-pink-400 rounded-2xl flex items-center justify-center mb-6 shadow-xl">
               <Sparkles className="w-9 h-9 text-white" />
             </div>

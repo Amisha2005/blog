@@ -21,8 +21,8 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "InsightFlow – A Modern Blog",
-  description: "Thoughts on design, development, and everything in between.",
+  title: "Nova Tech | AI Interview & Learning Platform",
+  description: "Practice technical interviews, improve coding confidence, and learn with Nova Tech.",
 };
 
 export default function RootLayout({
