@@ -51,7 +51,7 @@ const router = useRouter(); // ← Add this line
           email: "",
           password: "",
         });
-     router.push('/');
+     router.push('/account');
       } else {
         console.log("invalid crediential");
       }

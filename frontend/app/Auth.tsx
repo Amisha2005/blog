@@ -55,15 +55,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const storeTokenInLS = (serverToken: string) => {
     localStorage.setItem("token", serverToken);
     setToken(serverToken);
-    // Optional: You can remove alert or replace with toast later
-    alert("You have been logged in successfully.");
   };
 
   const LogoutUser = () => {
     setToken(null);
     setUser(null);
     localStorage.removeItem("token");
-    alert("You have been logged out successfully.");
   };
 
   const userAuthentication = async () => {

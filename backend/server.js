@@ -234,6 +234,86 @@ Return **valid JSON only**, no markdown, no extra text:
   }
 });
 
+app.post("/api/code-review", async (req, res) => {
+  const { code, language = "bash", topic = "", difficulty = "Medium" } = req.body || {};
+
+  if (!code || !String(code).trim()) {
+    return res.status(400).json({ error: "Code is required." });
+  }
+
+  const prompt = `You are a strict technical code reviewer for interview practice.
+
+Context:
+- Language: ${language}
+- Topic: ${topic || "General"}
+- Difficulty: ${difficulty}
+
+Candidate code:
+${code}
+
+Return only valid JSON (no markdown):
+{
+  "summary": "short review summary",
+  "issues": ["issue 1", "issue 2"],
+  "correctedCode": "improved version if needed, else original",
+  "expectedOutput": "expected output/result from the code if executed",
+  "confidence": "low|medium|high"
+}
+
+Rules:
+- Be precise and concise.
+- If code cannot run as-is, explain expected behavior/output assumption clearly in expectedOutput.
+- Do not include extra keys.
+`;
+
+  try {
+    const completion = await groq.chat.completions.create({
+      messages: [
+        {
+          role: "system",
+          content: "You are a JSON-only assistant.",
+        },
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+      model: "llama-3.3-70b-versatile",
+      temperature: 0.2,
+      max_tokens: 900,
+    });
+
+    const raw = completion.choices[0]?.message?.content?.trim() || "{}";
+    const cleaned = raw.replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+
+    let parsed;
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch (parseError) {
+      console.error("Code review JSON parse failed:", cleaned);
+      parsed = {
+        summary: "Unable to parse AI code review response.",
+        issues: ["Parsing failed for AI response format."],
+        correctedCode: String(code),
+        expectedOutput: "Could not generate expected output reliably.",
+        confidence: "low",
+      };
+    }
+
+    res.json(parsed);
+  } catch (error) {
+    console.error("Code review error:", error.message);
+    res.status(500).json({
+      error: "Code review failed.",
+      summary: "Server failed to review code.",
+      issues: ["AI service unavailable"],
+      correctedCode: String(code),
+      expectedOutput: "No output available.",
+      confidence: "low",
+    });
+  }
+});
+
 
 connectDb()
   .then(async () => {

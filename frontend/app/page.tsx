@@ -62,69 +62,101 @@ const recentPosts = [
 
 export default function Home() {
   return (
-    <div className="container px-4 py-12 max-w-6xl mx-auto">
-      {/* Hero / Featured Post */}
-      <section className="grid lg:grid-cols-2 gap-12 items-center mb-20">
-        <div className="space-y-6">
-          <Badge variant="secondary">Featured Article</Badge>
-          <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-tight">
+    <div className="container mx-auto max-w-6xl px-4 py-12 md:px-6 md:py-16">
+      <section className="relative mb-20 grid items-center gap-10 lg:grid-cols-[1.15fr_0.85fr]">
+        <div className="animate-fade-up space-y-7">
+          <Badge className="rounded-full border-0 bg-gradient-to-r from-sky-500 to-emerald-500 px-4 py-1.5 text-white shadow-md shadow-sky-500/25">
+            Featured Insight
+          </Badge>
+
+          <h1 className="text-balance text-4xl font-bold leading-tight md:text-5xl lg:text-6xl">
             {featuredPost.title}
           </h1>
-          <p className="text-xl text-muted-foreground">
+
+          <p className="max-w-xl text-lg text-muted-foreground md:text-xl">
             {featuredPost.excerpt}
           </p>
-          <div className="flex items-center gap-4 text-sm text-muted-foreground">
-            <Avatar className="h-10 w-10">
+
+          <div className="flex items-center gap-3 text-sm text-muted-foreground">
+            <Avatar className="h-11 w-11 ring-2 ring-sky-500/20">
               <AvatarImage src={featuredPost.avatar} />
               <AvatarFallback>AN</AvatarFallback>
             </Avatar>
-            <span>{featuredPost.author}</span>
+            <div>
+              <p className="font-semibold text-foreground">{featuredPost.author}</p>
+              <p>{featuredPost.date}</p>
+            </div>
           </div>
-          <Button size="lg" asChild>
-            <Link href="/learn">Learn →</Link>
+
+          <Button
+            size="lg"
+            className="animate-glow rounded-xl bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-500 px-7 text-white shadow-lg shadow-sky-600/20"
+            asChild
+          >
+            <Link href="/learn">Start Learning</Link>
           </Button>
         </div>
-        <div className="bg-muted rounded-2xl aspect-video lg:aspect-auto lg:h-96 border">
-          <img
-            className="rounded-2xl"
-            style={{ width: "40vw", height: "72vh" }}
-            src="https://media.istockphoto.com/id/1530973530/photo/software-development-concept.webp?a=1&b=1&s=612x612&w=0&k=20&c=NXxmootfVkI2C_JS5-5p06qMD_ngxJnH8BfLxnoQKP8="
-          />
+
+        <div className="relative animate-fade-up" style={{ animationDelay: "120ms" }}>
+          <div className="absolute -right-4 -top-4 h-28 w-28 rounded-full bg-amber-400/25 blur-2xl" />
+          <div className="absolute -bottom-6 -left-6 h-28 w-28 rounded-full bg-sky-500/25 blur-2xl" />
+          <div className="glass-panel animate-floaty overflow-hidden rounded-3xl p-2 shadow-2xl shadow-slate-900/10">
+            <img
+              className="h-[420px] w-full rounded-[1.25rem] object-cover"
+              src="https://media.istockphoto.com/id/1530973530/photo/software-development-concept.webp?a=1&b=1&s=612x612&w=0&k=20&c=NXxmootfVkI2C_JS5-5p06qMD_ngxJnH8BfLxnoQKP8="
+              alt="Software developer workspace"
+            />
+          </div>
         </div>
       </section>
 
-      {/* Recent Posts Grid */}
-      <section>
-        <h2 className="text-3xl font-bold mb-8">Free Interview Demo</h2>
-        <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-4">
-          {recentPosts.map((post) => (
+      <section className="space-y-8">
+        <div className="animate-fade-up flex flex-col items-start justify-between gap-4 md:flex-row md:items-end">
+          <div>
+            <h2 className="text-3xl font-bold md:text-4xl">Free Interview Demo</h2>
+            <p className="mt-2 text-muted-foreground">
+              Pick a lane and jump into instant mock interviews.
+            </p>
+          </div>
+          <Badge variant="outline" className="rounded-full px-4 py-1 text-xs tracking-wide">
+            Hands-on Practice
+          </Badge>
+        </div>
+
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+          {recentPosts.map((post, index) => (
             <Card
               key={post.id}
-              className="group hover:shadow-lg transition-shadow"
+              className="group glass-panel animate-fade-up overflow-hidden rounded-2xl border-border/60 shadow-md transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
+              style={{ animationDelay: `${index * 90}ms` }}
             >
-              <CardHeader>
-                <div className="bg-muted border-2 border-dashed rounded-xl aspect-video mb-4">
+              <CardHeader className="p-0">
+                <div className="aspect-video overflow-hidden">
                   {post.src ? (
                     <img
-                      className="rounded-xl"
-                      style={{ width: "100%", height: "100%" }}
+                      className="h-full w-full object-cover transition duration-500 group-hover:scale-110"
                       src={post.src}
+                      alt={post.title}
                     />
                   ) : null}
                 </div>
-                <Badge variant="outline" className="w-fit">
+              </CardHeader>
+
+              <CardContent className="space-y-3 p-5">
+                <Badge variant="outline" className="w-fit rounded-full">
                   {post.category}
                 </Badge>
-                <CardTitle className="line-clamp-2 mt-2 group-hover:text-primary transition-colors">
+                <CardTitle className="line-clamp-2 text-lg transition-colors group-hover:text-primary">
                   {post.title}
                 </CardTitle>
-                <CardDescription>
-                  {post.date}
-                </CardDescription>
-              </CardHeader>
-              <CardFooter>
-                <Button variant="ghost" className="w-full" asChild>
-                  <Link href="/interview">Try →</Link>
+                <CardDescription>{post.date}</CardDescription>
+              </CardContent>
+
+              <CardFooter className="p-5 pt-0">
+                <Button variant="ghost" className="w-full justify-between rounded-xl" asChild>
+                  <Link href={`/interview/setup?topic=${encodeURIComponent(post.title)}&source=demo`}>
+                    Try Demo <span>→</span>
+                  </Link>
                 </Button>
               </CardFooter>
             </Card>

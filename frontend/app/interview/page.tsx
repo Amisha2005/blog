@@ -1,21 +1,24 @@
-// NO "use client" here!
+import { redirect } from "next/navigation";
 
-import { Suspense } from "react";
-import InterviewClient from "./InterviewClient";
+type InterviewPageProps = {
+  searchParams: Promise<{
+    topic?: string;
+    source?: string;
+  }>;
+};
 
-export default function InterviewPage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-purple-50">
-          <div className="text-center">
-            <div className="w-20 h-20 border-8 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto mb-8"></div>
-            <p className="text-2xl font-semibold text-purple-700">Preparing your interview room...</p>
-          </div>
-        </div>
-      }
-    >
-      <InterviewClient />
-    </Suspense>
-  );
+export default async function InterviewPage({ searchParams }: InterviewPageProps) {
+  const paramsObj = await searchParams;
+  const topic = paramsObj?.topic;
+  const source = paramsObj?.source;
+
+  if (topic) {
+    const params = new URLSearchParams({
+      topic,
+      ...(source ? { source } : {}),
+    });
+    redirect(`/interview/setup?${params.toString()}`);
+  }
+
+  redirect("/interview/setup");
 }

@@ -19,6 +19,9 @@ import {
   VideoOff,
   MoveRight,
   Sparkles,
+  TerminalSquare,
+  CheckCircle2,
+  AlertTriangle,
 } from "lucide-react";
 
 import {
@@ -30,9 +33,20 @@ import {
 } from "@/components/ui/select";
 //useSearchParams used to get value from url such as we are taking topic
 import { useSearchParams } from "next/navigation";
-import * as pdfjsLib from "pdfjs-dist";
-pdfjsLib.GlobalWorkerOptions.workerSrc =
-  "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.5.207/build/pdf.worker.min.mjs";
+
+let pdfjsLibPromise: Promise<any> | null = null;
+
+const loadPdfJs = async () => {
+  if (!pdfjsLibPromise) {
+    pdfjsLibPromise = import("pdfjs-dist/legacy/build/pdf.mjs").then((lib) => {
+      lib.GlobalWorkerOptions.workerSrc =
+        "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.5.207/legacy/build/pdf.worker.min.mjs";
+      return lib;
+    });
+  }
+
+  return pdfjsLibPromise;
+};
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
 
@@ -50,10 +64,12 @@ let objectDetector: ObjectDetector | null = null;
 
 export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const searchParams = useSearchParams();
-  // fetching topic from url
-  const topicParam = searchParams.get("topic");
-  //? is used for shortcut of if else
-  const cleanTopic = topicParam ? decodeURIComponent(topicParam) : null;
+  const difficultyParam = searchParams.get("difficulty");
+  const durationParam = searchParams.get("duration");
+  const autoStartParam = searchParams.get("autostart");
+  const cleanTopic = selectedTopic ? decodeURIComponent(selectedTopic) : null;
+  const [autoStartRequested, setAutoStartRequested] = useState(false);
+  const [skipSetupScreen, setSkipSetupScreen] = useState(false);
   // New state
   const [resumeText, setResumeText] = useState<string>("");
   const [isParsing, setIsParsing] = useState(false);
@@ -78,6 +94,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   >(null);
   const [showDuration, setShowDuration] = useState<boolean>(false);
   const [selectedDuration, setSelectedDuration] = useState<number | null>(null); // minutes
+  const [manualTopic, setManualTopic] = useState("");
 
   // Camera & Media states
   const [cameraActive, setCameraActive] = useState<boolean>(false);
@@ -88,6 +105,20 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const [isCameraOn, setIsCameraOn] = useState(true);
   const [isMicOn, setIsMicOn] = useState(true);
   const [isListening, setIsListening] = useState(false);
+  const [showCodeEditor, setShowCodeEditor] = useState(false);
+  const [codeInput, setCodeInput] = useState("");
+  const [codeCheckResult, setCodeCheckResult] = useState<{
+    status: "idle" | "ok" | "warn" | "error";
+    message: string;
+  }>({ status: "idle", message: "" });
+  const [aiCheckLoading, setAiCheckLoading] = useState(false);
+  const [aiCodeResult, setAiCodeResult] = useState<{
+    summary: string;
+    issues: string[];
+    correctedCode: string;
+    expectedOutput: string;
+    confidence: string;
+  } | null>(null);
 
   // Emotion & Object detection
   const [isModelReady, setIsModelReady] = useState<boolean>(false);
@@ -480,10 +511,46 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   }, [cleanTopic]);
 
   useEffect(() => {
+    if (!difficultyParam && !durationParam && autoStartParam !== "1") return;
+
+    if (difficultyParam && ["Easy", "Medium", "Hard"].includes(difficultyParam)) {
+      setSelectedDifficulty(difficultyParam as "Easy" | "Medium" | "Hard");
+    }
+
+    if (durationParam) {
+      const parsedDuration = Number(durationParam);
+      if (!Number.isNaN(parsedDuration) && parsedDuration > 0) {
+        setSelectedDuration(parsedDuration);
+      }
+    }
+
+    if (autoStartParam === "1") {
+      setSkipSetupScreen(true);
+      setShowInstructions(false);
+      setAutoStartRequested(true);
+    }
+
+    try {
+      const stored = sessionStorage.getItem("interviewSetup");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (typeof parsed?.resumeText === "string" && parsed.resumeText.trim()) {
+          setResumeText(parsed.resumeText);
+        }
+        if (!cleanTopic && typeof parsed?.topic === "string" && parsed.topic.trim()) {
+          setManualTopic(parsed.topic.trim());
+        }
+      }
+    } catch (error) {
+      console.warn("Could not read interview setup data", error);
+    }
+  }, [difficultyParam, durationParam, autoStartParam, cleanTopic]);
+
+  useEffect(() => {
     if (cleanTopic) {
       setMessages([
         {
-          text: `Great! You've selected **"${cleanTopic}"**.\n\nNext:\n1. Choose difficulty\n2. Choose duration\n3. Type **"start"** when ready (camera & mic will activate)`,
+          text: `Great! You've selected **"${cleanTopic}"**.\n\nNext:\n1. Choose difficulty\n2. Choose duration\n3. Click **Start Interview** when ready (camera & mic will activate)`,
           isBot: true,
         },
       ]);
@@ -492,7 +559,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       // ← NEW: Resume was uploaded
       setMessages([
         {
-          text: `✅ Resume loaded! Auto topic set to **"${customTopic}"**\n\nNow:\n1. Choose difficulty\n2. Choose duration\n3. Type **"start"**`,
+          text: `✅ Resume loaded! Auto topic set to **"${customTopic}"**\n\nNow:\n1. Choose difficulty\n2. Choose duration\n3. Click **Start Interview**`,
           isBot: true,
         },
       ]);
@@ -514,6 +581,137 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    const lastBotMessage = [...messages].reverse().find((msg) => msg.isBot);
+    if (!lastBotMessage) return;
+
+    const asksForCode =
+      /(write|implement|create|build).*(code|script|function|command|bash|shell)/i.test(
+        lastBotMessage.text,
+      ) ||
+      /(code|script|bash|shell|terminal|command\s*line|algorithm|pseudo\s*code)/i.test(
+        lastBotMessage.text,
+      );
+
+    setShowCodeEditor(asksForCode);
+  }, [messages]);
+
+  const hasBalancedQuotes = (text: string) => {
+    const singleQuotes = (text.match(/(?<!\\)'/g) || []).length;
+    const doubleQuotes = (text.match(/(?<!\\)"/g) || []).length;
+    return singleQuotes % 2 === 0 && doubleQuotes % 2 === 0;
+  };
+
+  const checkCodeSnippet = () => {
+    const snippet = codeInput.trim();
+
+    if (!snippet) {
+      setCodeCheckResult({
+        status: "error",
+        message: "Code area is empty. Add your Bash/code answer first.",
+      });
+      return;
+    }
+
+    const dangerousPattern =
+      /(rm\s+-rf\s+\/|mkfs|:\(\)\{:\|:&\};:|shutdown|reboot|dd\s+if=|chmod\s+-R\s+777)/i;
+
+    if (dangerousPattern.test(snippet)) {
+      setCodeCheckResult({
+        status: "warn",
+        message:
+          "Potentially dangerous command detected. Review before sending.",
+      });
+      return;
+    }
+
+    if (!hasBalancedQuotes(snippet)) {
+      setCodeCheckResult({
+        status: "warn",
+        message: "Quotes look unbalanced. Recheck your syntax.",
+      });
+      return;
+    }
+
+    const hasCommandLikeToken = /(\$\s*\w+|\b(ls|pwd|cd|echo|cat|grep|find|awk|sed|chmod|chown|touch|mkdir|npm|node|python|git|docker|kubectl)\b)/i.test(
+      snippet,
+    );
+
+    if (!hasCommandLikeToken) {
+      setCodeCheckResult({
+        status: "warn",
+        message:
+          "No obvious shell command found yet. If this is pseudocode, you can still send it.",
+      });
+      return;
+    }
+
+    setCodeCheckResult({
+      status: "ok",
+      message: "Looks good for a Bash/code response.",
+    });
+  };
+
+  const useCodeInPrompt = () => {
+    const snippet = codeInput.trim();
+    if (!snippet) return;
+
+    const codeBlock = `\`\`\`bash\n${snippet}\n\`\`\``;
+    setInput((prev) => (prev?.trim() ? `${prev}\n\n${codeBlock}` : codeBlock));
+  };
+
+  const runAiCodeCheck = async () => {
+    const snippet = codeInput.trim();
+    if (!snippet) {
+      setCodeCheckResult({
+        status: "error",
+        message: "Add code first before AI checking.",
+      });
+      return;
+    }
+
+    setAiCheckLoading(true);
+    setAiCodeResult(null);
+
+    try {
+      const finalTopic = cleanTopic || customTopic || manualTopic || "General";
+      const res = await fetch(`${API_BASE_URL}/api/code-review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code: snippet,
+          language: "bash",
+          topic: finalTopic,
+          difficulty: selectedDifficulty || "Medium",
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error || "AI code check failed");
+      }
+
+      setAiCodeResult({
+        summary: data?.summary || "No summary provided.",
+        issues: Array.isArray(data?.issues) ? data.issues : [],
+        correctedCode: data?.correctedCode || "",
+        expectedOutput: data?.expectedOutput || "No output provided.",
+        confidence: data?.confidence || "unknown",
+      });
+    } catch (error: any) {
+      setAiCodeResult({
+        summary: "AI check failed.",
+        issues: [error?.message || "Unknown error while checking code."],
+        correctedCode: "",
+        expectedOutput: "No output available.",
+        confidence: "low",
+      });
+    } finally {
+      setAiCheckLoading(false);
+    }
+  };
 
   // ────────────────────────────────────────────────
   //  Speech Recognition
@@ -597,31 +795,79 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     }
   };
 
+  const startInterview = () => {
+    if (interviewStarted) return;
+
+    if (!selectedDifficulty || !selectedDuration) {
+      setMessages((p) => [
+        ...p,
+        { text: "Please select difficulty and duration first.", isBot: true },
+      ]);
+      return;
+    }
+
+    const setupTopic = cleanTopic || customTopic || manualTopic.trim();
+
+    if (!setupTopic) {
+      setMessages((p) => [
+        ...p,
+        { text: "Please choose or type a topic before starting.", isBot: true },
+      ]);
+      return;
+    }
+
+    if (!cleanTopic && setupTopic !== customTopic) {
+      setCustomTopic(setupTopic);
+    }
+
+    setInterviewStarted(true);
+    startCamera();
+    startInterviewTimer(selectedDuration * 60);
+
+    setMessages((p) => [
+      ...p,
+      {
+        text: `🚀 Starting ${selectedDifficulty} interview on **${setupTopic}**...`,
+        isBot: true,
+      },
+    ]);
+
+    sendToBackend("start");
+    setInput("");
+  };
+
+  useEffect(() => {
+    if (!autoStartRequested || interviewStarted || isParsing) return;
+    if (!selectedDifficulty || !selectedDuration) return;
+
+    const setupTopic = cleanTopic || customTopic || manualTopic.trim();
+    if (!setupTopic) return;
+
+    startInterview();
+    setAutoStartRequested(false);
+  }, [
+    autoStartRequested,
+    interviewStarted,
+    isParsing,
+    selectedDifficulty,
+    selectedDuration,
+    cleanTopic,
+    customTopic,
+    manualTopic,
+  ]);
+
  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading || interviewEnded) return;
 
-    const text = input.trim().toLowerCase();
-
-    if (text === "start" && !interviewStarted) {
-      if (!selectedDifficulty || !selectedDuration) {
-        setMessages((p) => [...p, { text: "Please select difficulty and duration first.", isBot: true }]);
-        return;
-      }
-
-      const finalTopic = cleanTopic || customTopic || "Full Stack Development";
-
-      setInterviewStarted(true);
-      startCamera();
-      startInterviewTimer(selectedDuration * 60);
-
+    if (!interviewStarted) {
       setMessages((p) => [
         ...p,
-        { text: `🚀 Starting ${selectedDifficulty} interview on **${finalTopic}**...`, isBot: true },
+        {
+          text: "Use the setup section and click Start Interview to begin.",
+          isBot: true,
+        },
       ]);
-
-      sendToBackend("start");
-      setInput("");
       return;
     }
 
@@ -637,6 +883,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
     setIsParsing(true);
     try {
+      const pdfjsLib = await loadPdfJs();
       const arrayBuffer = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
@@ -664,7 +911,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       setMessages((prev) => [
         ...prev,
         {
-          text: `✅ Resume parsed successfully!\n📊 ${fullText.length} characters extracted\n\n🎯 **Topic auto-detected:** ${autoTopic}\n\nNow select difficulty + duration and type "start"`,
+          text: `✅ Resume parsed successfully!\n📊 ${fullText.length} characters extracted\n\n🎯 **Topic auto-detected:** ${autoTopic}\n\nNow select difficulty + duration and click **Start Interview**`,
           isBot: true,
         },
       ]);
@@ -695,15 +942,6 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
           </div>
 
           <div className="flex items-center gap-6">
-            {interviewStarted && timeLeft !== null && (
-              <Badge
-                variant="outline"
-                className="px-4 py-2 text-base font-mono"
-              >
-                {formatTime(timeLeft)}
-              </Badge>
-            )}
-
             <div className="flex gap-3">
               <Button
                 variant="outline"
@@ -849,7 +1087,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
           </div>
         )}
         {/* ─── Configuration Screen ─── shown until interview starts ─── */}
-        {!interviewStarted && (
+        {!interviewStarted && !skipSetupScreen && (
           <Card className="mb-10 p-8 bg-white/90 dark:bg-black/70 backdrop-blur-xl border border-gray-200/50 dark:border-white/10 rounded-3xl shadow-2xl max-w-4xl mx-auto">
             <h3 className="text-2xl font-bold text-center mb-8 bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
               Let's set up your interview
@@ -904,32 +1142,71 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
               {selectedDifficulty && selectedDuration ? (
                 <p>
                   Everything is ready! Type{" "}
-                  <strong className="text-purple-600 font-semibold">
-                    "start"
-                  </strong>{" "}
-                  below to begin the interview
+                    <strong className="text-purple-600 font-semibold">Start Interview</strong>{" "}
+                    to begin the interview
                 </p>
               ) : (
                 <p>Please select difficulty and duration to continue</p>
               )}
             </div>
+
+            <div className="mt-8 grid gap-6 md:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-base font-medium">
+                  Topic
+                </label>
+                {cleanTopic ? (
+                  <div className="h-14 rounded-lg border border-border bg-muted/40 px-4 flex items-center text-base">
+                    {cleanTopic}
+                  </div>
+                ) : (
+                  <Textarea
+                    value={manualTopic}
+                    onChange={(e) => setManualTopic(e.target.value)}
+                    placeholder="Type your interview topic (e.g. React Hooks, System Design, Node.js)"
+                    className="min-h-20 resize-none"
+                  />
+                )}
+              </div>
+
+              <div>
+                <label className="mb-2 block text-base font-medium">
+                  Upload Resume (Optional PDF)
+                </label>
+                <input
+                  type="file"
+                  accept=".pdf"
+                  onChange={handleResumeUpload}
+                  className="block h-14 w-full rounded-lg border border-border bg-background px-3 py-3 text-sm text-gray-500 file:mr-3 file:rounded-md file:border-0 file:bg-purple-100 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-purple-700 hover:file:bg-purple-200"
+                />
+                {isParsing && (
+                  <p className="mt-2 text-sm text-purple-600">Parsing resume...</p>
+                )}
+                {resumeText && (
+                  <p className="mt-2 text-sm text-green-600">
+                    Resume loaded ({(resumeText.length / 1000).toFixed(1)} k chars)
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-8 text-center">
+              <Button
+                type="button"
+                size="lg"
+                className="px-10 py-6 text-lg bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                onClick={startInterview}
+                disabled={
+                  !selectedDifficulty ||
+                  !selectedDuration ||
+                  isParsing ||
+                  (!cleanTopic && !customTopic && !manualTopic.trim())
+                }
+              >
+                Start Interview
+              </Button>
+            </div>
           </Card>
-        )}
-        {!cleanTopic && !customTopic && (
-          <div className="mb-6">
-            <label className="block text-lg font-medium mb-2">
-              Upload your Resume (PDF)
-            </label>
-            <input
-              type="file"
-              accept=".pdf"
-              onChange={handleResumeUpload}
-              className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
-            />
-            {isParsing && (
-              <p className="text-purple-600 mt-2">Parsing resume...</p>
-            )}
-          </div>
         )}
 
         <div className="grid lg:grid-cols-2 gap-8">
@@ -937,8 +1214,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
           <Card className="h-[82vh] flex flex-col bg-white/90 dark:bg-black/70 backdrop-blur-xl border border-gray-200/50 dark:border-white/10">
             {cameraActive && (
               <div
-                className="absolute top-3 left-3 bg-black/65 text-white text-sm px-3 py-2 rounded-md font-mono z-10 shadow"
-                style={{ marginLeft: "-10pc" }}
+                className="absolute top-3 right-3 bg-black/65 text-white text-sm px-3 py-2 rounded-md font-mono z-10 shadow"
               >
                 <div>😊 Smile: {smileScore.toFixed(0)}%</div>
                 <div
@@ -1012,7 +1288,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                   variant={isListening ? "default" : "outline"}
                   onClick={toggleVoiceInput}
                   className={`gap-2 ${isListening ? "bg-red-600 hover:bg-red-700 animate-pulse" : ""}`}
-                  disabled={isPaused || interviewEnded}
+                  disabled={!interviewStarted || isPaused || interviewEnded}
                 >
                   <Mic className="h-6 w-6" />
                   {isListening ? "Listening..." : "Speak"}
@@ -1038,12 +1314,12 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                       ? 'Type "yes" or "ok" to continue...'
                       : interviewStarted
                         ? "Type your answer or click Speak to dictate..."
-                        : "Select options above, then type 'start' to begin"
+                        : "Complete setup above and click Start Interview"
                   }
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  className="min-h-32 resize-none flex-1"
-                  disabled={isPaused || interviewEnded}
+                  className="min-h-40 resize-none flex-1"
+                  disabled={!interviewStarted || isPaused || interviewEnded}
                 />
 
                 <Button
@@ -1063,13 +1339,14 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                   🎤 Listening... Speak clearly!
                 </p>
               )}
+
             </div>
           </Card>
 
           {/* RIGHT: Video + overlay states */}
           <div className="space-y-6">
             <Card className="rounded-2xl overflow-hidden shadow-2xl bg-gray-900 relative">
-              <div className="relative aspect-video" style={{ height: "34pc" }}>
+              <div className="relative aspect-video" style={{ height: "17.5pc" }}>
                 <video
                   ref={videoRef}
                   autoPlay
@@ -1082,7 +1359,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                 {!interviewStarted && (
                   <div className="absolute inset-0 bg-black/70 flex items-center justify-center z-40">
                     <p className="text-white text-3xl font-bold text-center px-8">
-                      Camera will start automatically when you type "start"
+                      Camera will start automatically when you click Start Interview
                     </p>
                   </div>
                 )}
@@ -1094,15 +1371,6 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                       CAMERA MANUALLY TURNED OFF
                     </p>
                   </div>
-                )}
-
-                {interviewStarted && timeLeft !== null && (
-                  <Badge
-                    variant="outline"
-                    className="px-4 py-2 text-base font-mono"
-                  >
-                    {interviewEnded ? "00:00" : formatTime(timeLeft)}
-                  </Badge>
                 )}
 
                 {/* Final score overlay */}
@@ -1118,6 +1386,116 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                   </div>
                 )}
               </div>
+            </Card>
+
+            {interviewStarted && timeLeft !== null && (
+              <div className="flex justify-center">
+                <Badge variant="outline" className="px-5 py-2 text-base font-mono bg-black/70 text-white border-white/20">
+                  Time Left: {interviewEnded ? "00:00" : formatTime(timeLeft)}
+                </Badge>
+              </div>
+            )}
+
+            <Card className="rounded-2xl border border-cyan-500/30 bg-cyan-500/5 p-5 backdrop-blur-sm">
+              <div className="mb-3 flex items-center gap-2">
+                <TerminalSquare className="h-5 w-5 text-cyan-600" />
+                <p className="text-base font-semibold">Code Workspace (Bash / shell)</p>
+              </div>
+
+              <Textarea
+                value={codeInput}
+                onChange={(e) => setCodeInput(e.target.value)}
+                placeholder="Write your Bash/script answer here..."
+                className="min-h-44 resize-y bg-background font-mono text-sm"
+                disabled={interviewEnded}
+              />
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={checkCodeSnippet}
+                  disabled={interviewEnded}
+                >
+                  Check Code
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={runAiCodeCheck}
+                  disabled={!codeInput.trim() || interviewEnded || aiCheckLoading}
+                >
+                  {aiCheckLoading ? "AI Checking..." : "AI Check & Output"}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="bg-gradient-to-r from-cyan-600 to-blue-600 text-white"
+                  onClick={useCodeInPrompt}
+                  disabled={!codeInput.trim() || interviewEnded}
+                >
+                  Use in Prompt
+                </Button>
+              </div>
+
+              {codeCheckResult.status !== "idle" && (
+                <div className="mt-3 flex items-center gap-2 text-sm">
+                  {codeCheckResult.status === "ok" ? (
+                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  ) : (
+                    <AlertTriangle className="h-4 w-4 text-amber-600" />
+                  )}
+                  <span
+                    className={
+                      codeCheckResult.status === "ok"
+                        ? "text-green-700 dark:text-green-400"
+                        : codeCheckResult.status === "error"
+                          ? "text-red-700 dark:text-red-400"
+                          : "text-amber-700 dark:text-amber-400"
+                    }
+                  >
+                    {codeCheckResult.message}
+                  </span>
+                </div>
+              )}
+
+              {aiCodeResult && (
+                <div className="mt-4 rounded-xl border border-cyan-500/30 bg-background/80 p-4 text-sm">
+                  <p className="font-semibold text-cyan-700 dark:text-cyan-400">AI Review</p>
+                  <p className="mt-1 text-muted-foreground">{aiCodeResult.summary}</p>
+
+                  <p className="mt-3 font-semibold">Issues</p>
+                  {aiCodeResult.issues.length > 0 ? (
+                    <ul className="mt-1 list-disc pl-5 text-muted-foreground space-y-1">
+                      {aiCodeResult.issues.map((issue, idx) => (
+                        <li key={idx}>{issue}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-1 text-muted-foreground">No major issues found.</p>
+                  )}
+
+                  <p className="mt-3 font-semibold">Expected Output</p>
+                  <pre className="mt-1 whitespace-pre-wrap rounded-md bg-muted p-3 text-xs">
+                    {aiCodeResult.expectedOutput}
+                  </pre>
+
+                  {aiCodeResult.correctedCode && (
+                    <>
+                      <p className="mt-3 font-semibold">Suggested Code</p>
+                      <pre className="mt-1 whitespace-pre-wrap rounded-md bg-muted p-3 text-xs">
+                        {aiCodeResult.correctedCode}
+                      </pre>
+                    </>
+                  )}
+
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    Confidence: {aiCodeResult.confidence}
+                  </p>
+                </div>
+              )}
             </Card>
           </div>
         </div>

@@ -40,11 +40,45 @@ const seedUsers = [
   },
 ];
 
+const getSelectedDbUri = () => {
+  if (process.env.MONGODB_URI) {
+    return process.env.MONGODB_URI;
+  }
+
+  const isProduction = process.env.NODE_ENV === "production";
+
+  if (isProduction && process.env.MONGODB_URI_LIVE) {
+    return process.env.MONGODB_URI_LIVE;
+  }
+
+  if (!isProduction && process.env.MONGODB_URI_LOCAL) {
+    return process.env.MONGODB_URI_LOCAL;
+  }
+
+  return process.env.MONGODB_URI_LOCAL || process.env.MONGODB_URI_LIVE || "";
+};
+
+const isLocalMongoUri = (uri) => {
+  if (!uri) return false;
+  const normalized = String(uri).toLowerCase();
+  return (
+    normalized.includes("127.0.0.1") ||
+    normalized.includes("localhost") ||
+    normalized.includes("mongodb://mongo")
+  );
+};
+
 const seedLocalUsersIfNeeded = async () => {
   const isProduction = process.env.NODE_ENV === "production";
 
   if (isProduction) {
     console.log("[seed] Skipped user seeding in production mode.");
+    return;
+  }
+
+  const selectedUri = getSelectedDbUri();
+  if (!isLocalMongoUri(selectedUri)) {
+    console.log("[seed] Skipped user seeding because selected DB URI is not local.");
     return;
   }
 

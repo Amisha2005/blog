@@ -122,61 +122,61 @@ export default function ArticlesPage() {
   });
 
   if (loading) {
-    return <div className="text-center py-20 text-xl">Loading interview topics...</div>;
+      return <div className="py-24 text-center text-xl">Loading interview topics...</div>;
   }
  return (
-    <div className="container max-w-6xl px-4 py-12 md:py-16 mx-auto">
+      <div className="container mx-auto max-w-6xl px-4 py-12 md:px-6 md:py-16">
       {/* Header */}
-      <div className="text-center mb-12">
-        <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-4">
+        <div className="animate-fade-up mb-12 text-center">
+          <h1 className="text-4xl font-bold tracking-tight md:text-5xl mb-4">
           Interview Topics
         </h1>
-        <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+          <p className="mx-auto max-w-2xl text-lg text-muted-foreground md:text-xl">
           Choose a topic and start your practice interview
         </p>
       </div>
 
-      <Separator className="mb-12" />
+        <Separator className="mb-12 opacity-70" />
 
       {/* Search */}
-      <div className="mb-12 max-w-md mx-auto">
-        <div className="relative">
+        <div className="animate-fade-up mb-12 mx-auto max-w-xl" style={{ animationDelay: "100ms" }}>
+          <div className="glass-panel relative rounded-2xl p-2">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
           <Input
             placeholder="Search topics..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
+              className="h-12 border-0 bg-transparent pl-10 shadow-none focus-visible:ring-0"
           />
         </div>
       </div>
 
       {/* Topics Grid */}
       {filteredTopics.length === 0 ? (
-        <div className="text-center py-20">
+        <div className="py-20 text-center">
           <p className="text-2xl text-muted-foreground">No topics found.</p>
           <Button 
             variant="outline" 
-            className="mt-6"
+            className="mt-6 rounded-xl"
             onClick={() => setSearchQuery("")}
           >
             Clear Search
           </Button>
         </div>
       ) : (
-        <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
-          {filteredTopics.map((topic) => (
-            <Card key={topic._id} className="h-full flex flex-col hover:shadow-lg transition-shadow overflow-hidden">
+        <div className="grid gap-7 md:grid-cols-2 lg:grid-cols-3">
+          {filteredTopics.map((topic, index) => (
+            <Card key={topic._id} className="glass-panel animate-fade-up h-full flex flex-col overflow-hidden rounded-2xl transition-all duration-300 hover:-translate-y-1 hover:shadow-xl" style={{ animationDelay: `${index * 70}ms` }}>
               <CardHeader className="p-0">
                 <div className="aspect-video relative">
                   {topic.image ? (
                     <img
                       src={topic.image}
                       alt={topic.topicName}
-                      className="w-full h-full object-cover"
+                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                     />
                   ) : (
-                    <div className="w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                    <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-sky-500 to-emerald-500">
                       <span className="text-white text-4xl">🎯</span>
                     </div>
                   )}
@@ -184,15 +184,15 @@ export default function ArticlesPage() {
               </CardHeader>
 
               <CardContent className="flex-1 p-6">
-                <CardTitle className="line-clamp-2 text-xl mb-3">
+                <CardTitle className="mb-3 line-clamp-2 text-xl">
                   {topic.topicName}
                 </CardTitle>
-                <CardDescription className="line-clamp-4 text-base">
+                <CardDescription className="line-clamp-4 text-base leading-relaxed">
                   {topic.description}
                 </CardDescription>
               </CardContent>
 
-              <CardFooter className="px-6 pb-6 pt-0 flex items-center justify-between">
+              <CardFooter className="flex items-center justify-between px-6 pb-6 pt-0">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Calendar className="h-4 w-4" />
                   {new Date(topic.date || topic.createdAt).toLocaleDateString("en-US", {
@@ -202,8 +202,8 @@ export default function ArticlesPage() {
                   })}
                 </div>
 
-                <Button asChild>
-                  <Link href={`/interview?topic=${encodeURIComponent(topic.topicName)}`}>
+                <Button asChild className="rounded-xl bg-gradient-to-r from-sky-500 to-emerald-500 text-white">
+                  <Link href={`/interview/setup?topic=${encodeURIComponent(topic.topicName)}&source=admin`}>
                     Start Interview →
                   </Link>
                 </Button>

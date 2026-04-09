@@ -13,13 +13,14 @@ export function ThemeToggle() {
   useEffect(() => setMounted(true), []);
 
   if (!mounted) {
-    return <Button variant="ghost" size="icon" className="w-9 h-9" disabled />;
+    return <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full border border-border/70" disabled />;
   }
 
   return (
     <Button
       variant="ghost"
       size="icon"
+      className="rounded-full border border-border/70 hover:border-sky-500/50"
       onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
       aria-label="Toggle theme"
     >

@@ -140,27 +140,27 @@ export default function AdminDashboard() {
   }, [isAdmin, authorizationToken]);
 
   return (
-    <div className="p-6 md:p-10 space-y-10">
-      <div>
-        <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-        <p className="text-muted-foreground">
+    <div className="container mx-auto space-y-10 px-4 py-10 md:px-6 md:py-12">
+      <div className="animate-fade-up rounded-3xl border border-border/60 bg-gradient-to-br from-sky-500/10 via-transparent to-emerald-500/10 p-6 md:p-8">
+        <h1 className="text-3xl font-bold md:text-4xl">Admin Dashboard</h1>
+        <p className="mt-2 text-muted-foreground">
           Virtual Interview Platform Overview
         </p>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card>
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+        <Card className="glass-panel animate-fade-up rounded-2xl" style={{ animationDelay: "80ms" }}>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-sm font-medium">Total Users</CardTitle>
             <Users className="h-5 w-5 text-blue-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-4xl font-bold">{stats.totalUsers}</div>
+            <div className="text-4xl font-bold tracking-tight">{stats.totalUsers}</div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="glass-panel animate-fade-up rounded-2xl" style={{ animationDelay: "140ms" }}>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-sm font-medium">
               New This Month
@@ -168,25 +168,25 @@ export default function AdminDashboard() {
             <TrendingUp className="h-5 w-5 text-green-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-4xl font-bold">{stats.newUsersThisMonth}</div>
+            <div className="text-4xl font-bold tracking-tight">{stats.newUsersThisMonth}</div>
             <p className="text-sm text-muted-foreground">Last 30 days</p>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="glass-panel animate-fade-up rounded-2xl" style={{ animationDelay: "200ms" }}>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-sm font-medium">Admins</CardTitle>
-            <Shield className="h-5 w-5 text-purple-600" />
+            <Shield className="h-5 w-5 text-cyan-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-4xl font-bold">{stats.totalAdmins}</div>
+            <div className="text-4xl font-bold tracking-tight">{stats.totalAdmins}</div>
           </CardContent>
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
         {/* Leaderboard */}
-        <Card>
+        <Card className="glass-panel animate-fade-up rounded-2xl" style={{ animationDelay: "260ms" }}>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Trophy className="h-5 w-5" /> User Leaderboard
@@ -197,7 +197,7 @@ export default function AdminDashboard() {
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b">
+                  <tr className="border-b border-border/60">
                     <th className="text-left py-3">Username</th>
                     <th className="text-left py-3">Email</th>
                     <th className="text-left py-3">Select</th>
@@ -206,7 +206,7 @@ export default function AdminDashboard() {
                 </thead>
                 <tbody>
                   {users.slice(0, 10).map((user) => (
-                    <tr key={user._id} className="border-b hover:bg-muted/50">
+                    <tr key={user._id} className="border-b border-border/50 transition hover:bg-muted/40">
                       <td className="py-3 font-medium">{user.username}</td>
                       <td className="py-3 text-muted-foreground">
                         {user.email}
@@ -226,7 +226,7 @@ export default function AdminDashboard() {
         </Card>
 
         {/* Add Interview Topic Form */}
-        <Card>
+        <Card className="glass-panel animate-fade-up rounded-2xl" style={{ animationDelay: "320ms" }}>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Plus className="h-5 w-5" /> Add New Interview Topic
@@ -236,53 +236,57 @@ export default function AdminDashboard() {
           <CardContent>
             <form onSubmit={handleAddTopic} className="space-y-4">
               <div>
-                <Label>Topic Name *</Label>
+                <Label className="mb-2 inline-block">Topic Name *</Label>
                 <Input
                   value={newTopic.topicName}
                   onChange={(e) =>
                     setNewTopic({ ...newTopic, topicName: e.target.value })
                   }
                   placeholder="e.g. React.js Advanced Concepts"
+                  className="rounded-xl"
                   required
                 />
               </div>
 
               <div>
-                <Label>Description *</Label>
+                <Label className="mb-2 inline-block">Description *</Label>
                 <Textarea
                   value={newTopic.description}
                   onChange={(e) =>
                     setNewTopic({ ...newTopic, description: e.target.value })
                   }
                   placeholder="Detailed description of the interview topic..."
+                  className="rounded-xl"
                   rows={4}
                   required
                 />
               </div>
 
               <div>
-                <Label>Image URL (Optional)</Label>
+                <Label className="mb-2 inline-block">Image URL (Optional)</Label>
                 <Input
                   value={newTopic.image}
                   onChange={(e) =>
                     setNewTopic({ ...newTopic, image: e.target.value })
                   }
                   placeholder="https://example.com/image.jpg"
+                  className="rounded-xl"
                 />
               </div>
 
               <div>
-                <Label>Date (Optional)</Label>
+                <Label className="mb-2 inline-block">Date (Optional)</Label>
                 <Input
                   type="date"
                   value={newTopic.date}
                   onChange={(e) =>
                     setNewTopic({ ...newTopic, date: e.target.value })
                   }
+                  className="rounded-xl"
                 />
               </div>
 
-              <Button type="submit" className="w-full">
+              <Button type="submit" className="w-full rounded-xl bg-gradient-to-r from-sky-500 to-emerald-500 text-white">
                 Add Interview Topic
               </Button>
             </form>
@@ -291,7 +295,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* User Signup Trend Chart */}
-      <Card>
+      <Card className="glass-panel animate-fade-up rounded-2xl" style={{ animationDelay: "380ms" }}>
         <CardHeader>
           <CardTitle>User Sign-up Trend</CardTitle>
           <CardDescription>Monthly growth in registered users</CardDescription>

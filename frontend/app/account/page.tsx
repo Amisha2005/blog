@@ -2,6 +2,7 @@
 "use client";
 import { useEffect } from "react";
 import { useAuth } from "@/app/Auth";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,16 +16,22 @@ import { LogOut, Mail, User, Calendar, Edit2, Save, X } from "lucide-react";
 
 export default function AccountPage() {
   const { user, LogoutUser } = useAuth();
+  const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState(" ");
   const [email,setEmail] = useState(" ");
   const [bio, setBio] = useState("Full-stack developer | Next.js & Tailwind enthusiast");
 
+  const handleLogout = () => {
+    LogoutUser();
+    router.push("/");
+  };
+
 useEffect(() => {
     if (user) {
-      setName(user.name || user.username || "");
+      setName(user.username || "");
       setEmail(user.email || "");
-      setBio(user.bio || "");
+      setBio("");
     }
   }, [user]);
 
@@ -206,7 +213,7 @@ useEffect(() => {
           <Button
             variant="destructive"
             size="lg"
-            onClick={LogoutUser}
+            onClick={handleLogout}
             className="shadow-xl hover:shadow-2xl transition-all"
           >
             <LogOut className="mr-2 h-5 w-5" />
