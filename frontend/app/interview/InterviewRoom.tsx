@@ -66,25 +66,6 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
 
-  //import { useRef } from "react";
-
-  // function InputFocus() {
-  //   const inputRef = useRef(null);
-
-  //   const focusInput = () => {
-  //     inputRef.current.focus();
-  //   };
-
-  //   return (
-  //     <>
-  //       <input ref={inputRef} />
-  //       <button onClick={focusInput}>Focus</button>
-  //     </>
-  //   );
-  // }
-  //inputRef stores the input element
-  // inputRef.current gives access to it
-
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Selection states
@@ -131,125 +112,56 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const recognitionRef = useRef<any>(null);
   const hasEndedRef = useRef(false);
   const timerActiveRef = useRef(false);
-  const hasEvaluatedRef = useRef(false);   // ← ADD THIS LINE
-  
-  // useRef is often used to store values that should persist between renders without causing a re-render.
-  // ────────────────────────────────────────────────
-  //  Timer Logic
-  // ────────────────────────────────────────────────
-// Start timer
-const currentTimeRef = useRef<number | null>(null);
 
-const startInterviewTimer = (seconds: number) => {
-  console.log("[TIMER] Starting with", seconds, "seconds");
+  const currentTimeRef = useRef<number | null>(null);
 
-  setTimeLeft(seconds);
-  currentTimeRef.current = seconds;
-  setIsTimerRunning(true);
-  hasEndedRef.current = false;
+ const startInterviewTimer = (seconds: number) => {
+    console.log("[TIMER] Starting with", seconds, "seconds");
 
-  if (timerRef.current) {
-    clearInterval(timerRef.current);
-    timerRef.current = null;
-  }
+    setTimeLeft(seconds);
+    currentTimeRef.current = seconds;
+    setIsTimerRunning(true);
+    hasEndedRef.current = false;
 
-  timerRef.current = setInterval(() => {
-    if (hasEndedRef.current || currentTimeRef.current === null) {
-      return;
+    if (timerRef.current) clearInterval(timerRef.current);
+
+    timerRef.current = setInterval(() => {
+      if (hasEndedRef.current || currentTimeRef.current === null) return;
+
+      const next = currentTimeRef.current - 1;
+      currentTimeRef.current = next;
+      setTimeLeft(next);
+
+      if (next <= 0) {
+        hasEndedRef.current = true;
+        clearInterval(timerRef.current!);
+        timerRef.current = null;
+
+        console.log("⏰ Time's up - Ending interview");
+        setInterviewEnded(true);
+        stopCamera();
+
+        setMessages((prev) => [
+          ...prev,
+          { text: "⌛ Time's up! Interview ended automatically.", isBot: true },
+        ]);
+
+        // Direct redirect to congratulations page
+        setTimeout(() => {
+          window.location.href = "/congratulations";
+        }, 1500);
+      }
+    }, 1000);
+  };
+  // Stop/pause timer
+  const pauseTimer = () => {
+    console.log("[TIMER] Pausing");
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
     }
-
-    const next = currentTimeRef.current - 1;
-    currentTimeRef.current = next; // update ref immediately (synchronous)
-
-    setTimeLeft(next); // update UI
-
-    console.log("[TIMER TICK] Set to:", next);
-
-   if (next <= 0) {
-  console.log("[TIMER] Reached 0 - ending");
-  clearInterval(timerRef.current!);
-  timerRef.current = null;
-  currentTimeRef.current = null;
-
-  finishInterview(); // ✅ SINGLE ENTRY POINT
-}
-  }, 1000);
-};
-// Stop/pause timer
-const pauseTimer = () => {
-  console.log("[TIMER] Pausing");
-  if (timerRef.current) {
-    clearInterval(timerRef.current);
-    timerRef.current = null;
-  }
-  setIsTimerRunning(false);
-};
-
-const resumeTimer = () => {
-  if (hasEndedRef.current || currentTimeRef.current === null || currentTimeRef.current <= 0) {
-    console.log("[TIMER] Cannot resume");
-    return;
-  }
-
-  console.log("[TIMER] Resuming from", currentTimeRef.current);
-  setIsTimerRunning(true);
-
- timerRef.current = setInterval(() => {
-  if (hasEndedRef.current || currentTimeRef.current === null) return;
-
-  const next = currentTimeRef.current - 1;
-  currentTimeRef.current = next;
-  setTimeLeft(next);
-
-  if (next <= 0) {
-    hasEndedRef.current = true;
-    clearInterval(timerRef.current!);
-    timerRef.current = null;
-    currentTimeRef.current = null;
-
-    console.log("⏰ Time finished - Starting evaluation...");
-    // setInterviewEnded(true);
-    // stopCamera();
-
-    // setMessages((prev) => [...prev, { 
-    //   text: "⌛ Time's up! Interview ended automatically.", 
-    //   isBot: true 
-    // }]);
-
-    // // Directly call evaluation
-    // handleEvaluate().then(() => {
-    //   setTimeout(() => {
-    //     window.location.href = "/congratulations";
-    //   }, 2000);
-    // });
-
-    finishInterview();
-  }
-}, 1000);
-};
-// In endInterviewDueToTime – keep your existing logs + force redirect
-// const endInterviewDueToTime = async () => {
-//   console.log("🔴 [TIMER END] Time's up - ending interview");
-
-//   setInterviewEnded(true);
-//   setIsTimerRunning(false);
-//   stopCamera();
-
-//   setMessages((prev) => [
-//     ...prev,
-//     { text: "⌛ Time's up! Interview ended automatically.", isBot: true },
-//   ]);
-
-//   console.log("🔴 [TIMER END] Now calling handleEvaluate...");
-//   await handleEvaluate();
-
-//   console.log("🔴 [TIMER END] Redirecting to congratulations in 2 seconds...");
-//   setTimeout(() => {
-//     window.location.href = "/congratulations";
-//   }, 2000);
-// };
-
-
+    setIsTimerRunning(false);
+  };
 
   const formatTime = (seconds: number) => {
     const safeSeconds = Math.max(0, seconds); // never negative
@@ -370,7 +282,7 @@ const resumeTimer = () => {
           baseOptions: {
             modelAssetPath:
               "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite2/float16/latest/efficientdet_lite2.tflite",
-            delegate: "GPU",
+            delegate: "CPU",
           },
           //GPU stands for Graphics Processing Unit. 🖥️
 
@@ -447,28 +359,34 @@ const resumeTimer = () => {
     requestAnimationFrame(detectEmotions);
   }, [cameraActive, interviewEnded, isModelReady]);
 
-const calculateFinalPresenceScore = () => {
-  if (emotionSamples.length === 0) {
-    return 65; // Neutral default (not too low)
-  }
+  const calculateFinalPresenceScore = () => {
+    if (emotionSamples.length === 0) {
+      return 65; // Neutral default (not too low)
+    }
 
-  // Take last 70% of samples to ignore initial nervousness
-  const relevantSamples = emotionSamples.slice(Math.floor(emotionSamples.length * 0.3));
+    // Take last 70% of samples to ignore initial nervousness
+    const relevantSamples = emotionSamples.slice(
+      Math.floor(emotionSamples.length * 0.3),
+    );
 
-  const avgSmile = relevantSamples.reduce((sum, s) => sum + s.smile, 0) / relevantSamples.length;
-  const avgStress = relevantSamples.reduce((sum, s) => sum + s.stress, 0) / relevantSamples.length;
-  const avgConfidence = relevantSamples.reduce((sum, s) => sum + s.conf, 0) / relevantSamples.length;
+    const avgSmile =
+      relevantSamples.reduce((sum, s) => sum + s.smile, 0) /
+      relevantSamples.length;
+    const avgStress =
+      relevantSamples.reduce((sum, s) => sum + s.stress, 0) /
+      relevantSamples.length;
+    const avgConfidence =
+      relevantSamples.reduce((sum, s) => sum + s.conf, 0) /
+      relevantSamples.length;
 
-  // Simple weighted formula (you can tweak weights easily)
-  const presenceScore = Math.round(
-    avgSmile * 0.45 + 
-    (100 - avgStress) * 0.35 + 
-    avgConfidence * 0.20
-  );
+    // Simple weighted formula (you can tweak weights easily)
+    const presenceScore = Math.round(
+      avgSmile * 0.45 + (100 - avgStress) * 0.35 + avgConfidence * 0.2,
+    );
 
-  // Clamp between 30 and 98
-  return Math.max(30, Math.min(98, presenceScore));
-};
+    // Clamp between 30 and 98
+    return Math.max(30, Math.min(98, presenceScore));
+  };
   useEffect(() => {
     if (cameraActive && isModelReady) detectEmotions();
   }, [cameraActive, isModelReady, detectEmotions]);
@@ -544,7 +462,7 @@ const calculateFinalPresenceScore = () => {
     if (isPaused) {
       pauseTimer();
     } else if (timeLeft != null && timeLeft > 0 && !isTimerRunning) {
-      resumeTimer();
+   
     }
   }, [isPaused]);
 
@@ -664,134 +582,27 @@ const calculateFinalPresenceScore = () => {
       const data = await res.json();
       setMessages((prev) => [...prev, { text: data.reply, isBot: true }]);
 
-     if (
-  data.reply.toLowerCase().includes("interview complete") ||
-  data.reply.includes("ended")
-) {
-  setInterviewEnded(true);
-  stopCamera();
-  console.log("⏳ AI said interview complete - calling handleEvaluate...");
-  await handleEvaluate();
-}
+     if (data.reply.toLowerCase().includes("interview complete") || data.reply.includes("ended")) {
+        setInterviewEnded(true);
+        stopCamera();
+        setTimeout(() => window.location.href = "/congratulations", 1500);
+      }
     } catch (err) {
-      setMessages((p) => [
-        ...p,
-        { text: "Network error. Try again.", isBot: true },
-      ]);
+      setMessages((p) => [...p, { text: "Network error. Try again.", isBot: true }]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const finishInterview = async () => {
-  if (hasEndedRef.current) return;
-
-  console.log("🛑 Finishing interview...");
-  hasEndedRef.current = true;
-
-  setInterviewEnded(true);
-  setIsTimerRunning(false);
-  stopCamera();
-
-  setMessages((prev) => [
-    ...prev,
-    { text: "⌛ Time's up! Interview ended.", isBot: true },
-  ]);
-
-  await handleEvaluate();
-
-  console.log("✅ Evaluation done, redirecting...");
-  setTimeout(() => {
-    window.location.href = "/congratulations";
-  }, 2000);
-};
-
-  // ── New: Evaluation handler ────────────────────────────────────────
-// ── Clean & Reliable handleEvaluate ─────────────────────────────────────
-// ── Highly Debugged handleEvaluate ─────────────────────────────────────
-const handleEvaluate = async () => {
-  console.log("🚀 handleEvaluate START");
-
-  if (hasEvaluatedRef.current) {
-    console.log("⏭️ Already evaluated");
-    return;
-  }
-
-  hasEvaluatedRef.current = true;
-
-  try {
-    const controller = new AbortController();
-
-    const timeout = setTimeout(() => {
-      controller.abort();
-      console.error("⏰ Evaluation request TIMEOUT");
-    }, 8000);
-
-    const response = await fetch(
-      "https://novatech-z95h.onrender.com/api/evaluate",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        signal: controller.signal,
-        body: JSON.stringify({
-          sessionId,
-          topic: cleanTopic || customTopic || "Full Stack Development",
-          difficulty: selectedDifficulty || "Medium",
-        }),
-      }
-    );
-
-    clearTimeout(timeout);
-
-    console.log("📥 Response:", response.status);
-
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(errText);
-    }
-
-    const aiScores = await response.json();
-    console.log("✅ Scores:", aiScores);
-
-    localStorage.setItem("interviewScores", JSON.stringify({
-      overall: aiScores.overall || 0,
-      technical: aiScores.technical_accuracy || 0,
-      communication: aiScores.communication || 0,
-      problem_solving: aiScores.problem_solving || 0,
-      strengths: aiScores.strengths || [],
-      weaknesses: aiScores.weaknesses || [],
-      feedback: aiScores.feedback || "No feedback available.",
-    }));
-
-    const presence = calculateFinalPresenceScore();
-    localStorage.setItem("presenceScore", presence.toString());
-
-    console.log("💾 Saved all scores");
-
-  } catch (err) {
-    console.error("❌ Evaluation failed:", err);
-
-    const presence = calculateFinalPresenceScore();
-    localStorage.setItem("presenceScore", presence.toString());
-
-    console.log("⚠️ Fallback: Only presence score saved");
-  }
-};
-  const handleSubmit = (e: React.FormEvent) => {
+ const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading || interviewEnded) return;
 
     const text = input.trim().toLowerCase();
 
-    // Special case: User types "start"
     if (text === "start" && !interviewStarted) {
       if (!selectedDifficulty || !selectedDuration) {
-        setMessages((p) => [
-          ...p,
-          { text: "Please select difficulty and duration first.", isBot: true },
-        ]);
+        setMessages((p) => [...p, { text: "Please select difficulty and duration first.", isBot: true }]);
         return;
       }
 
@@ -803,35 +614,15 @@ const handleEvaluate = async () => {
 
       setMessages((p) => [
         ...p,
-        {
-          text: `🚀 Starting ${selectedDifficulty} interview on **${finalTopic}** using your resume...`,
-          isBot: true,
-        },
+        { text: `🚀 Starting ${selectedDifficulty} interview on **${finalTopic}**...`, isBot: true },
       ]);
 
-      // sendToBackend(`start ${selectedDifficulty} ${finalTopic} ${selectedDuration}min`);
-      sendToBackend("start"); // ← ONLY "start" (important!)
+      sendToBackend("start");
       setInput("");
       return;
     }
 
-    // If user is typing topic manually (when no resume or customTopic)
-    if (!cleanTopic && !customTopic && !interviewStarted) {
-      setCustomTopic(input.trim());
-      setMessages((prev) => [
-        ...prev,
-        { text: input.trim(), isBot: false },
-        {
-          text: `Perfect! Topic set to **"${input.trim()}"**\nNow choose difficulty & duration then type "start"`,
-          isBot: true,
-        },
-      ]);
-      setShowDifficulty(true);
-      setInput("");
-      return;
-    }
-
-    // ← Normal message during interview
+    // Normal message
     setMessages((prev) => [...prev, { text: input.trim(), isBot: false }]);
     sendToBackend(input.trim());
     setInput("");
@@ -1095,7 +886,7 @@ const handleEvaluate = async () => {
                     <SelectValue placeholder="Choose duration" />
                   </SelectTrigger>
                   <SelectContent>
-                   <SelectItem value="1">1 minutes</SelectItem>
+                    <SelectItem value="1">1 minutes</SelectItem>
                     <SelectItem value="10">10 minutes</SelectItem>
                     <SelectItem value="20">20 minutes</SelectItem>
                     <SelectItem value="30">30 minutes</SelectItem>
@@ -1210,23 +1001,6 @@ const handleEvaluate = async () => {
               ))}
               <div ref={messagesEndRef} />
             </div>
-{/* Temporary Test Button - Remove later */}
-{interviewStarted && !interviewEnded && (
-  <div className="p-4 border-t bg-yellow-100 dark:bg-yellow-900/30">
-    <Button 
-      onClick={async () => {
-        console.log("🧪 Test Button Clicked - Calling handleEvaluate");
-        setInterviewEnded(true);
-        stopCamera();
-        await handleEvaluate();
-        setTimeout(() => window.location.href = "/congratulations", 1500);
-      }}
-      className="w-full bg-red-600 hover:bg-red-700"
-    >
-      🧪 TEST: Run handleEvaluate Now
-    </Button>
-  </div>
-)}
             <div className="p-6 border-t">
               <form onSubmit={handleSubmit} className="flex gap-4 items-end">
                 <Button
@@ -1273,7 +1047,7 @@ const handleEvaluate = async () => {
                   type="submit"
                   size="lg"
                   disabled={
-                    !input.trim() || isLoading || interviewEnded || isPaused 
+                    !input.trim() || isLoading || interviewEnded || isPaused
                   }
                   className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 min-w-[70px]"
                 >

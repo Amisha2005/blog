@@ -7,9 +7,18 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
-import { Search, Calendar, Clock } from "lucide-react";
+import { Search, Calendar } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+
+interface InterviewTopic {
+  _id: string;
+  topicName: string;
+  description: string;
+  image: string;
+  date: string;
+  createdAt: string;
+}
 
 // Mock data — replace with real posts from CMS/MDX later
 const allPosts = [
@@ -70,8 +79,10 @@ const allPosts = [
 const categories = ["All", "Next.js", "TypeScript", "Design", "Accessibility", "Future"];
 
 export default function ArticlesPage() {
+  const [topics, setTopics] = useState<InterviewTopic[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
+  const [loading, setLoading] = useState(true);
 
   const filteredPosts = allPosts.filter((post) => {
     const matchesSearch = post.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -80,95 +91,118 @@ export default function ArticlesPage() {
     return matchesSearch && matchesCategory;
   });
 
-  return (
+
+  // Fetch topics from backend
+  useEffect(() => {
+    const fetchTopics = async () => {
+      try {
+        const res = await fetch("http://localhost:5000/api/topics");
+        if (res.ok) {
+          const data = await res.json();
+          setTopics(data.topics || data);
+        }
+      } catch (error) {
+        console.error("Failed to fetch topics:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTopics();
+  }, []);
+
+  const filteredTopics = topics.filter((topic) => {
+    const matchesSearch =
+      topic.topicName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      topic.description.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    return matchesSearch; // You can add category filter later if needed
+  });
+
+  if (loading) {
+    return <div className="text-center py-20 text-xl">Loading interview topics...</div>;
+  }
+ return (
     <div className="container max-w-6xl px-4 py-12 md:py-16 mx-auto">
       {/* Header */}
       <div className="text-center mb-12">
-        <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-4">All Articles</h1>
+        <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-4">
+          Interview Topics
+        </h1>
         <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-          In-depth guides and thoughts on modern web development, design, and tooling.
+          Choose a topic and start your practice interview
         </p>
       </div>
 
       <Separator className="mb-12" />
 
-      {/* Search + Filters */}
-      <div className="mb-12 space-y-6">
-        <div className="relative max-w-md mx-auto">
+      {/* Search */}
+      <div className="mb-12 max-w-md mx-auto">
+        <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
           <Input
-            placeholder="Search articles..."
+            placeholder="Search topics..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10"
           />
         </div>
-
-        <div className="flex flex-wrap justify-center gap-3">
-          {categories.map((category) => (
-            <Button
-              key={category}
-              variant={selectedCategory === category ? "default" : "outline"}
-              size="sm"
-              onClick={() => setSelectedCategory(category)}
-              className="transition-all"
-            >
-              {category}
-            </Button>
-          ))}
-        </div>
       </div>
 
-      {/* Posts Grid */}
-      {filteredPosts.length === 0 ? (
+      {/* Topics Grid */}
+      {filteredTopics.length === 0 ? (
         <div className="text-center py-20">
-          <p className="text-2xl text-muted-foreground">No articles found.</p>
-          <Button variant="outline" className="mt-6" onClick={() => {
-            setSearchQuery("");
-            setSelectedCategory("All");
-          }}>
-            Clear filters
+          <p className="text-2xl text-muted-foreground">No topics found.</p>
+          <Button 
+            variant="outline" 
+            className="mt-6"
+            onClick={() => setSearchQuery("")}
+          >
+            Clear Search
           </Button>
         </div>
       ) : (
         <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
-          {filteredPosts.map((post) => (
-            <Card key={post.id} className="h-full flex flex-col hover:shadow-lg transition-shadow">
-              <CardHeader>
-                <div className="bg-muted border-2 border-dashed rounded-xl aspect-video mb-4">
-                 {post.src ? <img className="rounded-xl" style={{"width":"100%","height":"100%"}} src={post.src}/> : null}
-                  
-                  </div>
-                <div className="flex items-center gap-3 mb-3">
-                  <Avatar className="h-8 w-8">
-                    <AvatarImage src={post.avatar} />
-                    <AvatarFallback>AN</AvatarFallback>
-                  </Avatar>
-                  <div className="text-sm">
-                    <p className="font-medium">{post.author}</p>
-                  </div>
+          {filteredTopics.map((topic) => (
+            <Card key={topic._id} className="h-full flex flex-col hover:shadow-lg transition-shadow overflow-hidden">
+              <CardHeader className="p-0">
+                <div className="aspect-video relative">
+                  {topic.image ? (
+                    <img
+                      src={topic.image}
+                      alt={topic.topicName}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                      <span className="text-white text-4xl">🎯</span>
+                    </div>
+                  )}
                 </div>
-                <Badge variant="secondary" className="w-fit mb-2">
-                  {post.category}
-                </Badge>
-                <CardTitle className="line-clamp-2 text-xl">
-                  {post.title}
-                </CardTitle>
-                <CardDescription className="line-clamp-3">
-                  {post.excerpt}
-                </CardDescription>
               </CardHeader>
 
-              <CardFooter className="mt-auto flex items-center justify-between text-sm text-muted-foreground">
-                <div className="flex items-center gap-4">
-                  <span className="flex items-center gap-1">
-                    <Calendar className="h-4 w-4" />
-                    {new Date(post.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                  </span>
+              <CardContent className="flex-1 p-6">
+                <CardTitle className="line-clamp-2 text-xl mb-3">
+                  {topic.topicName}
+                </CardTitle>
+                <CardDescription className="line-clamp-4 text-base">
+                  {topic.description}
+                </CardDescription>
+              </CardContent>
+
+              <CardFooter className="px-6 pb-6 pt-0 flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Calendar className="h-4 w-4" />
+                  {new Date(topic.date || topic.createdAt).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                  })}
                 </div>
-                <Button variant="ghost" size="sm" asChild>
-                  <Link href={`/interview?topic=${encodeURIComponent(post.title)}`}>
-                    try →
+
+                <Button asChild>
+                  <Link href={`/interview?topic=${encodeURIComponent(topic.topicName)}`}>
+                    Start Interview →
                   </Link>
                 </Button>
               </CardFooter>
@@ -176,11 +210,6 @@ export default function ArticlesPage() {
           ))}
         </div>
       )}
-
-      {/* Optional: Pagination (add later) */}
-      {/* <div className="mt-16 flex justify-center">
-        <Pagination>...</Pagination>
-      </div> */}
     </div>
   );
 }

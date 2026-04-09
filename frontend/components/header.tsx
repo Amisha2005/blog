@@ -1,10 +1,10 @@
 // components/header.tsx
 "use client";
 import Link from "next/link";
-import { Menu,CircleUserRound } from "lucide-react";
+import { Menu, CircleUserRound, Shield } from "lucide-react"; // ← Added Shield icon for Admin
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTrigger,SheetTitle,SheetHeader } from "@/components/ui/sheet";
-import { ThemeToggle } from "@/components/theme-toggle"; // ← New component
+import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetHeader } from "@/components/ui/sheet";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { useAuth } from "@/app/Auth";
 
 const navItems = [
@@ -12,13 +12,11 @@ const navItems = [
   { name: "Articles", href: "/articles" },
   { name: "About", href: "/about" },
   { name: "Signup", href: "/signup" },
-  // { name: "Login", href: "/login" },
-  // {name:<CircleUserRound/>, href:"/profile" }
 ];
 
-
 export function Header() {
-  const { user,LogoutUser } = useAuth();
+const { user, LogoutUser, isAdmin } = useAuth();
+  
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -38,17 +36,42 @@ export function Header() {
               {item.name}
             </Link>
           ))}
-          {!user && (
-            <Link href="/login" className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">Login</Link>
+
+          {/* Admin Panel - Only visible to admins */}
+          {isAdmin && (
+            <Link
+              href="/admin"
+              className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <Shield className="h-4 w-4" />
+              Admin Panel
+            </Link>
           )}
+
+          {!user ? (
+            <Link
+              href="/login"
+              className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Login
+            </Link>
+          ) : (
+            <Link
+              href="/"
+              onClick={LogoutUser}
+              className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Logout
+            </Link>
+          )}
+
           {user && (
-          <Link className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-             href="/" onClick={LogoutUser}>Logout</Link>
-             )}
-             <Link href="/account" className="hover:text-gray-500">
-              <CircleUserRound/>
-              </Link>
-          <ThemeToggle /> {/* ← Clean, no hydration error */}
+            <Link href="/account" className="hover:text-foreground transition-colors">
+              <CircleUserRound className="h-5 w-5" />
+            </Link>
+          )}
+
+          <ThemeToggle />
         </nav>
 
         {/* Mobile Menu */}
@@ -60,22 +83,52 @@ export function Header() {
           </SheetTrigger>
           <SheetContent side="right">
             <SheetHeader>
-              <SheetTitle className="text-xl font-bold ml-35 ">Menu</SheetTitle>
+              <SheetTitle className="text-xl font-bold">Menu</SheetTitle>
             </SheetHeader>
+
             <div className="flex flex-col space-y-6 mt-8">
               {navItems.map((item) => (
-                <Link key={item.name} href={item.href} className="text-lg font-medium">
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  className="text-lg font-medium"
+                >
                   {item.name}
                 </Link>
               ))}
-                <div className="pt-4">
+
+              {/* Admin Panel in Mobile Menu */}
+              {isAdmin && (
+                <Link
+                  href="/admin"
+                  className="flex items-center gap-2 text-lg font-medium"
+                >
+                  <Shield className="h-5 w-5" />
+                  Admin Panel
+                </Link>
+              )}
+
+              {!user ? (
+                <Link href="/login" className="text-lg font-medium">
+                  Login
+                </Link>
+              ) : (
+                <Link href="/" onClick={LogoutUser} className="text-lg font-medium">
+                  Logout
+                </Link>
+              )}
+
+              {user && (
+                <Link href="/account" className="flex items-center gap-2 text-lg font-medium">
+                  <CircleUserRound className="h-5 w-5" />
+                  Account
+                </Link>
+              )}
+
+              <div className="pt-4">
                 <ThemeToggle />
               </div>
-              <Link href="/account" className="hover:text-gray-500"> 
-             <CircleUserRound/>
-             </Link>
             </div>
-            
           </SheetContent>
         </Sheet>
       </div>

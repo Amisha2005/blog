@@ -7,16 +7,22 @@ const connectDb = require("./utils/db");
 require("dotenv").config();
 const cors = require("cors");
 const authRoute = require("./Router/auth-router");
-// In-memory store (restart server → loses history → ok for dev)
+const adminRoutes = require("./Router/admin");// In-memory store (restart server → loses history → ok for dev)
+const topicRoutes = require("./Router/topicRoutes");
 const corsOptions = {
   origin: ["http://localhost:3000","https://nova-tech-rose.vercel.app"],
   methods: "GET,POST,PUT,DELETE,PATCH,HEAD",
   credentials: true,
 };
 app.use(cors(corsOptions));
+
+
+
+
 app.use(express.json());
 app.use("/api/auth", authRoute);
-
+app.use("/api/admin", adminRoutes);
+app.use("/api", topicRoutes);   // or app.use("/api", topicRoutes);
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
 });
@@ -52,7 +58,11 @@ app.post("/api/chat", async (req, res) => {
     effectiveUserMessage = "Start the interview now. Ask the first question appropriate for the difficulty.";
   }
 
-  history.push({ role: "user", content: effectiveUserMessage });
+  history.push({
+  role: "user",
+  content: effectiveUserMessage,
+  timestamp: Date.now()
+});
   let resumeSection = "";
   if (resumeText?.trim().length > 100) {
     const safeResume = resumeText.trim().substring(0, 9000);
@@ -115,7 +125,11 @@ Rules (must obey):
     let botReply = chatCompletion.choices[0]?.message?.content?.trim() || "No response.";
 
     // Add AI reply to history
-    history.push({ role: "assistant", content: botReply });
+    history.push({
+  role: "assistant",
+  content: botReply,
+  timestamp: Date.now()
+});
 
     // Save updated history
     conversationHistory.set(sessionId, history);
@@ -142,7 +156,7 @@ app.post("/api/evaluate", async (req, res) => {
   if (!sessionId) return res.status(400).json({ error: "Missing sessionId" });
 
   const history = conversationHistory.get(sessionId) || [];
-  if (history.length < 6) { // at least a few Q&A pairs
+  if (history.length < 2) { // at least a few Q&A pairs
     return res.json({
       overall: 0,
       technical_accuracy: 0,

@@ -19,7 +19,11 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
-});
+},
+{
+    timestamps: true,        // ✅ Correct place
+  }
+);
 
 userSchema.methods.comparePassword = async function (password) {
   return bcrypt.compare(password, this.password);
@@ -42,7 +46,7 @@ userSchema.methods.generateToken = async function () {
     console.log(error);
   }
 }; //we can use in any controller
-const User = new mongoose.model("User", userSchema);
+const User = mongoose.model("User", userSchema);
 
 
 module.exports = User;
