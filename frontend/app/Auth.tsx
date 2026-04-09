@@ -2,6 +2,8 @@
 "use client";
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
+
 // Define User Type (Recommended)
 type User = {
   _id: string;
@@ -72,7 +74,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     try {
       setIsLoading(true);
-      const response = await fetch("http://localhost:5000/api/auth/user", {
+      const response = await fetch(`${API_BASE_URL}/api/auth/user`, {
         method: "GET",
         headers: {
           Authorization: authorizationToken!,

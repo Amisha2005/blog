@@ -17,6 +17,9 @@ import { Github, Chrome, Mail, Sparkles, Sun, Moon } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 import { useAuth } from "../Auth";
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
+
 export default function SignUpPage() {
   const router = useRouter();
   const { theme, setTheme } = useTheme();
@@ -40,7 +43,7 @@ export default function SignUpPage() {
     e.preventDefault();
     console.log(user);
     try {
-      const response = await fetch("https://novatech-z95h.onrender.com/api/auth/register", {
+      const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(user),

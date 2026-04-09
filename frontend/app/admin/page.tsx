@@ -39,6 +39,8 @@ interface User {
   isAdmin: boolean;
 }
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
+
 export default function AdminDashboard() {
   const { isAdmin, authorizationToken } = useAuth();
 
@@ -72,7 +74,7 @@ export default function AdminDashboard() {
   const fetchStats = async () => {
     if (!authorizationToken) return;
     try {
-      const res = await fetch("http://localhost:5000/api/admin/stats", {
+      const res = await fetch(`${API_BASE_URL}/api/admin/stats`, {
         headers: { Authorization: authorizationToken },
       });
       if (res.ok) {
@@ -87,7 +89,7 @@ export default function AdminDashboard() {
   const fetchUsers = async () => {
     if (!authorizationToken) return;
     try {
-      const res = await fetch("http://localhost:5000/api/admin/users", {
+      const res = await fetch(`${API_BASE_URL}/api/admin/users`, {
         headers: { Authorization: authorizationToken },
       });
       if (res.ok) {
@@ -109,7 +111,7 @@ export default function AdminDashboard() {
     }
 
     try {
-      const res = await fetch("http://localhost:5000/api/admin/topics", {
+      const res = await fetch(`${API_BASE_URL}/api/admin/topics`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

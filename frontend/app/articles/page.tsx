@@ -11,6 +11,8 @@ import { Search, Calendar } from "lucide-react";
 import Link from "next/link";
 import { useState, useEffect } from "react";
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
+
 interface InterviewTopic {
   _id: string;
   topicName: string;
@@ -96,7 +98,7 @@ export default function ArticlesPage() {
   useEffect(() => {
     const fetchTopics = async () => {
       try {
-        const res = await fetch("http://localhost:5000/api/topics");
+        const res = await fetch(`${API_BASE_URL}/api/topics`);
         if (res.ok) {
           const data = await res.json();
           setTopics(data.topics || data);

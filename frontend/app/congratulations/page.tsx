@@ -157,6 +157,8 @@ import Link from "next/link";
 import { Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
+
 export default function CongratulationPage() {
   const [scores, setScores] = useState<any>(null);
   const [presenceScore, setPresenceScore] = useState<number | null>(null);
@@ -177,7 +179,7 @@ export default function CongratulationPage() {
     try {
       console.log("📤 Analyzing user answers...");
 
-      const res = await fetch("https://novatech-z95h.onrender.com/api/evaluate", {
+      const res = await fetch(`${API_BASE_URL}/api/evaluate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

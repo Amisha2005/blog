@@ -33,6 +33,9 @@ import { useSearchParams } from "next/navigation";
 import * as pdfjsLib from "pdfjs-dist";
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.5.207/build/pdf.worker.min.mjs";
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
+
 interface Message {
   text: string;
   isBot: boolean;
@@ -564,7 +567,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     try {
       const finalTopic =
         cleanTopic || customTopic || "Full Stack Development (MERN/MEAN)";
-      const res = await fetch("https://novatech-z95h.onrender.com/api/chat", {
+      const res = await fetch(`${API_BASE_URL}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
