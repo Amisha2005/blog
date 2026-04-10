@@ -149,7 +149,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
   const currentTimeRef = useRef<number | null>(null);
 
- const startInterviewTimer = (seconds: number) => {
+  const startInterviewTimer = (seconds: number) => {
     console.log("[TIMER] Starting with", seconds, "seconds");
 
     setTimeLeft(seconds);
@@ -496,7 +496,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     if (isPaused) {
       pauseTimer();
     } else if (timeLeft != null && timeLeft > 0 && !isTimerRunning) {
-   
+
     }
   }, [isPaused]);
 
@@ -765,6 +765,8 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     try {
       const finalTopic =
         cleanTopic || customTopic || "Full Stack Development (MERN/MEAN)";
+      // const API_BASE= "http://localhost:8000";
+      // const res = await fetch(`${API_BASE_URL}/api/chat`, {
       const res = await fetch(`${API_BASE_URL}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -783,7 +785,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       const data = await res.json();
       setMessages((prev) => [...prev, { text: data.reply, isBot: true }]);
 
-     if (data.reply.toLowerCase().includes("interview complete") || data.reply.includes("ended")) {
+      if (data.reply.toLowerCase().includes("interview complete") || data.reply.includes("ended")) {
         setInterviewEnded(true);
         stopCamera();
         setTimeout(() => window.location.href = "/congratulations", 1500);
@@ -856,7 +858,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     manualTopic,
   ]);
 
- const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading || interviewEnded) return;
 
@@ -928,6 +930,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       setIsParsing(false);
     }
   };
+  const [showCode, setShowCode] = useState(false)
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-purple-50 dark:from-slate-950 dark:to-purple-950/40">
@@ -1142,8 +1145,8 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
               {selectedDifficulty && selectedDuration ? (
                 <p>
                   Everything is ready! Type{" "}
-                    <strong className="text-purple-600 font-semibold">Start Interview</strong>{" "}
-                    to begin the interview
+                  <strong className="text-purple-600 font-semibold">Start Interview</strong>{" "}
+                  to begin the interview
                 </p>
               ) : (
                 <p>Please select difficulty and duration to continue</p>
@@ -1209,10 +1212,10 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
           </Card>
         )}
 
-        <div className="grid lg:grid-cols-2 gap-8">
+        <div className="flex gap-6">
           {/* LEFT: Chat */}
-          <Card className="h-[82vh] flex flex-col bg-white/90 dark:bg-black/70 backdrop-blur-xl border border-gray-200/50 dark:border-white/10">
-            {cameraActive && (
+          <Card className="flex-[0.7] h-[85vh] flex flex-col bg-white/90 dark:bg-black/70 backdrop-blur-xl border border-gray-200/50 dark:border-white/10">
+            {/* {cameraActive && (
               <div
                 className="absolute top-3 right-3 bg-black/65 text-white text-sm px-3 py-2 rounded-md font-mono z-10 shadow"
               >
@@ -1230,7 +1233,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                   💪 Conf: {confidenceScore.toFixed(0)}%
                 </div>
               </div>
-            )}
+            )} */}
             <div className="p-6 border-b">
               <div className="flex items-center gap-4">
                 <Avatar>
@@ -1247,7 +1250,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
               {messages.map((msg, index) => (
                 <div
                   key={index}
@@ -1261,11 +1264,10 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                     </Avatar>
                   )}
                   <div
-                    className={`max-w-xl ${
-                      msg.isBot
-                        ? "bg-gray-100 dark:bg-white/10"
-                        : "bg-gradient-to-r from-purple-600 to-pink-600 text-white"
-                    } px-6 py-4 rounded-2xl shadow-lg text-lg whitespace-pre-line`}
+                    className={`max-w-[70%] ${msg.isBot
+                      ? "bg-gray-100 dark:bg-white/10"
+                      : "bg-gradient-to-r from-purple-600 to-pink-600 text-white"
+                      } px-4 py-2 rounded-2xl shadow-lg text-base whitespace-pre-line`}
                   >
                     {msg.text}
                   </div>
@@ -1280,7 +1282,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
               ))}
               <div ref={messagesEndRef} />
             </div>
-            <div className="p-6 border-t">
+            {/* <div className="p-6 border-t">
               <form onSubmit={handleSubmit} className="flex gap-4 items-end">
                 <Button
                   type="button"
@@ -1318,7 +1320,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                   }
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  className="min-h-40 resize-none flex-1"
+                  className="min-h-10 max-h-40 resize-none flex-1"
                   disabled={!interviewStarted || isPaused || interviewEnded}
                 />
 
@@ -1340,13 +1342,137 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                 </p>
               )}
 
+            </div> */}
+            <div className="p-4 border-t">
+              <form
+                onSubmit={handleSubmit}
+                className="flex items-center gap-2 bg-[#111827] border border-gray-700 rounded-2xl px-3 py-2 shadow-lg"
+              >
+
+                {/* Voice Input */}
+                <button
+                  type="button"
+                  onClick={toggleVoiceInput}
+                  disabled={!interviewStarted || isPaused || interviewEnded}
+                  className={`p-2 rounded-lg ${isListening
+                    ? "bg-red-600 animate-pulse"
+                    : "hover:bg-white/10"
+                    }`}
+                >
+                  <Mic className="h-5 w-5 text-white" />
+                </button>
+
+                {/* Mic Toggle */}
+                <button
+                  type="button"
+                  onClick={toggleMic}
+                  disabled={!interviewStarted}
+                  className={`p-2 rounded-lg ${isMicOn ? "hover:bg-white/10" : "bg-red-600"
+                    }`}
+                >
+                  {isMicOn ? (
+                    <Mic className="h-5 w-5 text-white" />
+                  ) : (
+                    <MicOff className="h-5 w-5 text-white" />
+                  )}
+                </button>
+
+                {/* Input */}
+                {/* <input
+      value={input}
+      onChange={(e) => setInput(e.target.value)}
+      placeholder={
+        isPaused
+          ? 'Type "yes" or "ok" to continue...'
+          : interviewStarted
+          ? "Type your answer..."
+          : "Complete setup and start interview"
+      }
+      disabled={!interviewStarted || isPaused || interviewEnded}
+      className="flex-1 bg-transparent outline-none text-white placeholder-gray-400 px-2"
+      onKeyDown={(e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleSubmit(e as any);
+    }
+  }} */}
+                <textarea
+                  rows={1}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder={
+                    isPaused
+                      ? 'Type "yes" or "ok" to continue...'
+                      : interviewStarted
+                        ? "Type your answer..."
+                        : "Complete setup and start interview"
+                  }
+                  disabled={!interviewStarted || isPaused || interviewEnded}
+                  className="flex-1 bg-transparent outline-none resize-none text-white px-2"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleSubmit(e as any);
+                    }
+                  }}
+                />
+
+                {/* Send */}
+                <button
+                  type="submit"
+                  disabled={
+                    !input.trim() || isLoading || interviewEnded || isPaused
+                  }
+                  className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 px-3 py-2 rounded-lg"
+                >
+                  <Send className="h-5 w-5 text-white" />
+                </button>
+              </form>
+
+              {/* Listening Indicator */}
+              {isListening && (
+                <p className="text-center mt-3 text-green-500 text-sm animate-pulse">
+                  🎤 Listening...
+                </p>
+              )}
             </div>
           </Card>
 
           {/* RIGHT: Video + overlay states */}
-          <div className="space-y-6">
+
+
+
+          <div className="flex-[0.3] flex flex-col gap-4">
+
+            {/* TOP: Stats + Timer */}
+            <div className="bg-[#111827] rounded-xl p-4 shadow-md flex justify-between items-center">
+
+              {/* Stats */}
+              {cameraActive &&
+                <div className="text-sm space-y-1">
+                  <p>😊 Smile: {smileScore.toFixed(0)}%</p>
+                  <p className={stressScore > 60 ? "text-red-400" : ""}>
+                    😰 Stress: {stressScore.toFixed(0)}%
+                  </p>
+                  <p className={confidenceScore > 60 ? "text-blue-400" : ""}>
+                    💪 Conf: {confidenceScore.toFixed(0)}%
+                  </p>
+                </div>
+              }
+
+              {/* Timer */}
+              {interviewStarted && timeLeft !== null && (
+                <div className="text-lg font-mono bg-black/50 px-4 py-2 rounded-lg">
+                  ⏱ {interviewEnded ? "00:00" : formatTime(timeLeft)}
+                </div>
+              )}
+
+            </div>
+
+            {/* CAMERA */}
             <Card className="rounded-2xl overflow-hidden shadow-2xl bg-gray-900 relative">
-              <div className="relative aspect-video" style={{ height: "17.5pc" }}>
+              <div className="relative aspect-video h-[220px]">
+
                 <video
                   ref={videoRef}
                   autoPlay
@@ -1355,194 +1481,191 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                   className="w-full h-full object-cover scale-x-[-1]"
                 />
 
-                {/* Before interview started */}
+                {/* Before interview */}
                 {!interviewStarted && (
                   <div className="absolute inset-0 bg-black/70 flex items-center justify-center z-40">
-                    <p className="text-white text-3xl font-bold text-center px-8">
-                      Camera will start automatically when you click Start Interview
+                    <p className="text-white text-lg font-semibold text-center px-6">
+                      Camera will start when interview begins
                     </p>
                   </div>
                 )}
 
-                {/* Camera manually off */}
+                {/* Camera off */}
                 {interviewStarted && !isCameraOn && (
                   <div className="absolute inset-0 bg-black/90 flex items-center justify-center z-40">
-                    <p className="text-white text-3xl font-bold">
-                      CAMERA MANUALLY TURNED OFF
+                    <p className="text-white text-xl font-bold">
+                      Camera Off
                     </p>
                   </div>
                 )}
 
-                {/* Final score overlay */}
+                {/* Final Score */}
                 {interviewEnded && finalScore !== null && (
-                  <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center text-white z-50">
-                    <h2 className="text-4xl font-bold mb-6">
-                      Interview Complete
-                    </h2>
-                    <p className="text-7xl font-extrabold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+                  <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center text-white z-50">
+                    <h2 className="text-2xl font-bold mb-3">Interview Complete</h2>
+                    <p className="text-5xl font-extrabold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
                       {finalScore}%
                     </p>
-                    <p className="text-2xl mt-4">Presence & Confidence Score</p>
+                    <p className="text-sm mt-2">Presence Score</p>
                   </div>
                 )}
+
               </div>
             </Card>
 
-            {interviewStarted && timeLeft !== null && (
-              <div className="flex justify-center">
-                <Badge variant="outline" className="px-5 py-2 text-base font-mono bg-black/70 text-white border-white/20">
-                  Time Left: {interviewEnded ? "00:00" : formatTime(timeLeft)}
-                </Badge>
+          </div>
+        </div>
+        <div className="mt-4">
+          <Card className="rounded-2xl border border-cyan-500/30 bg-white/5 p-5 backdrop-blur-xl">
+            <div className="mb-3 flex items-center gap-2">
+              <TerminalSquare className="h-5 w-5 text-cyan-600" />
+              <p className="text-base font-semibold">Code Workspace (Bash / shell)</p>
+            </div>
+
+            <Textarea
+              value={codeInput}
+              onChange={(e) => setCodeInput(e.target.value)}
+              placeholder="Write your Bash/script answer here..."
+              className="min-h-60 resize-y bg-background font-mono text-sm"
+              disabled={interviewEnded}
+            />
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={checkCodeSnippet}
+                disabled={interviewEnded}
+              >
+                Check Code
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={runAiCodeCheck}
+                disabled={!codeInput.trim() || interviewEnded || aiCheckLoading}
+              >
+                {aiCheckLoading ? "AI Checking..." : "AI Check & Output"}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="bg-gradient-to-r from-cyan-600 to-blue-600 text-white"
+                onClick={useCodeInPrompt}
+                disabled={!codeInput.trim() || interviewEnded}
+              >
+                Use in Prompt
+              </Button>
+            </div>
+
+            {codeCheckResult.status !== "idle" && (
+              <div className="mt-3 flex items-center gap-2 text-sm">
+                {codeCheckResult.status === "ok" ? (
+                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                ) : (
+                  <AlertTriangle className="h-4 w-4 text-amber-600" />
+                )}
+                <span
+                  className={
+                    codeCheckResult.status === "ok"
+                      ? "text-green-700 dark:text-green-400"
+                      : codeCheckResult.status === "error"
+                        ? "text-red-700 dark:text-red-400"
+                        : "text-amber-700 dark:text-amber-400"
+                  }
+                >
+                  {codeCheckResult.message}
+                </span>
               </div>
             )}
 
-            <Card className="rounded-2xl border border-cyan-500/30 bg-cyan-500/5 p-5 backdrop-blur-sm">
-              <div className="mb-3 flex items-center gap-2">
-                <TerminalSquare className="h-5 w-5 text-cyan-600" />
-                <p className="text-base font-semibold">Code Workspace (Bash / shell)</p>
+            {aiCodeResult && (
+              <div className="mt-4 rounded-xl border border-cyan-500/30 bg-background/80 p-4 text-sm">
+                <p className="font-semibold text-cyan-700 dark:text-cyan-400">AI Review</p>
+                <p className="mt-1 text-muted-foreground">{aiCodeResult.summary}</p>
+
+                <p className="mt-3 font-semibold">Issues</p>
+                {aiCodeResult.issues.length > 0 ? (
+                  <ul className="mt-1 list-disc pl-5 text-muted-foreground space-y-1">
+                    {aiCodeResult.issues.map((issue, idx) => (
+                      <li key={idx}>{issue}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-1 text-muted-foreground">No major issues found.</p>
+                )}
+
+                <p className="mt-3 font-semibold">Expected Output</p>
+                <pre className="mt-1 whitespace-pre-wrap rounded-md bg-muted p-3 text-xs">
+                  {aiCodeResult.expectedOutput}
+                </pre>
+
+                {aiCodeResult.correctedCode && (
+                  <>
+                    <p className="mt-3 font-semibold">Suggested Code</p>
+                    <pre className="mt-1 whitespace-pre-wrap rounded-md bg-muted p-3 text-xs">
+                      {aiCodeResult.correctedCode}
+                    </pre>
+                  </>
+                )}
+
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Confidence: {aiCodeResult.confidence}
+                </p>
               </div>
-
-              <Textarea
-                value={codeInput}
-                onChange={(e) => setCodeInput(e.target.value)}
-                placeholder="Write your Bash/script answer here..."
-                className="min-h-44 resize-y bg-background font-mono text-sm"
-                disabled={interviewEnded}
-              />
-
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={checkCodeSnippet}
-                  disabled={interviewEnded}
-                >
-                  Check Code
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={runAiCodeCheck}
-                  disabled={!codeInput.trim() || interviewEnded || aiCheckLoading}
-                >
-                  {aiCheckLoading ? "AI Checking..." : "AI Check & Output"}
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  className="bg-gradient-to-r from-cyan-600 to-blue-600 text-white"
-                  onClick={useCodeInPrompt}
-                  disabled={!codeInput.trim() || interviewEnded}
-                >
-                  Use in Prompt
-                </Button>
-              </div>
-
-              {codeCheckResult.status !== "idle" && (
-                <div className="mt-3 flex items-center gap-2 text-sm">
-                  {codeCheckResult.status === "ok" ? (
-                    <CheckCircle2 className="h-4 w-4 text-green-600" />
-                  ) : (
-                    <AlertTriangle className="h-4 w-4 text-amber-600" />
-                  )}
-                  <span
-                    className={
-                      codeCheckResult.status === "ok"
-                        ? "text-green-700 dark:text-green-400"
-                        : codeCheckResult.status === "error"
-                          ? "text-red-700 dark:text-red-400"
-                          : "text-amber-700 dark:text-amber-400"
-                    }
-                  >
-                    {codeCheckResult.message}
-                  </span>
-                </div>
-              )}
-
-              {aiCodeResult && (
-                <div className="mt-4 rounded-xl border border-cyan-500/30 bg-background/80 p-4 text-sm">
-                  <p className="font-semibold text-cyan-700 dark:text-cyan-400">AI Review</p>
-                  <p className="mt-1 text-muted-foreground">{aiCodeResult.summary}</p>
-
-                  <p className="mt-3 font-semibold">Issues</p>
-                  {aiCodeResult.issues.length > 0 ? (
-                    <ul className="mt-1 list-disc pl-5 text-muted-foreground space-y-1">
-                      {aiCodeResult.issues.map((issue, idx) => (
-                        <li key={idx}>{issue}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="mt-1 text-muted-foreground">No major issues found.</p>
-                  )}
-
-                  <p className="mt-3 font-semibold">Expected Output</p>
-                  <pre className="mt-1 whitespace-pre-wrap rounded-md bg-muted p-3 text-xs">
-                    {aiCodeResult.expectedOutput}
-                  </pre>
-
-                  {aiCodeResult.correctedCode && (
-                    <>
-                      <p className="mt-3 font-semibold">Suggested Code</p>
-                      <pre className="mt-1 whitespace-pre-wrap rounded-md bg-muted p-3 text-xs">
-                        {aiCodeResult.correctedCode}
-                      </pre>
-                    </>
-                  )}
-
-                  <p className="mt-3 text-xs text-muted-foreground">
-                    Confidence: {aiCodeResult.confidence}
-                  </p>
-                </div>
-              )}
-            </Card>
-          </div>
+            )}
+          </Card>
         </div>
       </div>
 
       {/* Pause modal – same style */}
-      {(showMultiFaceModal || showSuspiciousObjectModal) && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 backdrop-blur-sm">
-          <Card className="p-10 max-w-lg text-center bg-white/95 dark:bg-slate-900/95 border border-purple-500/30 rounded-3xl shadow-2xl">
-            <h2 className="text-3xl font-bold text-red-600 mb-6">
-              {showMultiFaceModal
-                ? "Multiple Faces Detected"
-                : "Suspicious Object Detected"}
-            </h2>
-            <p className="text-xl mb-8 leading-relaxed">
-              {showMultiFaceModal
-                ? "Please make sure only you are visible during the interview."
-                : `Please remove: ${suspiciousObjectsList.join(", ")} from view.`}
-            </p>
-            <p className="text-lg text-muted-foreground mb-10">
-              Type <strong>"yes"</strong> or <strong>"ok"</strong> to resume
-            </p>
-            <Button
-              size="lg"
-              onClick={() => {
-                setIsPaused(false);
-                setShowMultiFaceModal(false);
-                setShowSuspiciousObjectModal(false);
-              }}
-              className="px-12 py-7 text-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
-            >
-              I've Fixed It
-            </Button>
-          </Card>
-        </div>
-      )}
+      {
+        (showMultiFaceModal || showSuspiciousObjectModal) && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 backdrop-blur-sm">
+            <Card className="p-10 max-w-lg text-center bg-white/95 dark:bg-slate-900/95 border border-purple-500/30 rounded-3xl shadow-2xl">
+              <h2 className="text-3xl font-bold text-red-600 mb-6">
+                {showMultiFaceModal
+                  ? "Multiple Faces Detected"
+                  : "Suspicious Object Detected"}
+              </h2>
+              <p className="text-xl mb-8 leading-relaxed">
+                {showMultiFaceModal
+                  ? "Please make sure only you are visible during the interview."
+                  : `Please remove: ${suspiciousObjectsList.join(", ")} from view.`}
+              </p>
+              <p className="text-lg text-muted-foreground mb-10">
+                Type <strong>"yes"</strong> or <strong>"ok"</strong> to resume
+              </p>
+              <Button
+                size="lg"
+                onClick={() => {
+                  setIsPaused(false);
+                  setShowMultiFaceModal(false);
+                  setShowSuspiciousObjectModal(false);
+                }}
+                className="px-12 py-7 text-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+              >
+                I've Fixed It
+              </Button>
+            </Card>
+          </div>
+        )
+      }
 
       {/* Exit button */}
       <button className="rounded-lg text-black bg-slate-500 hover:bg-slate-600 w-28 h-12 fixed bottom-8 right-8 flex items-center justify-center shadow-lg pl-3 text-base font-medium">
         <Link href="/congratulations">Exit</Link>
         <MoveRight className="ml-3 h-5 w-5" />
       </button>
-      {resumeText && (
-        <Badge variant="outline" className="ml-2 bg-green-950 text-green-300">
-          Resume loaded ({(resumeText.length / 1000).toFixed(1)} k chars)
-        </Badge>
-      )}
-    </div>
+      {
+        resumeText && (
+          <Badge variant="outline" className="ml-2 bg-green-950 text-green-300">
+            Resume loaded ({(resumeText.length / 1000).toFixed(1)} k chars)
+          </Badge>
+        )
+      }
+    </div >
   );
 }
