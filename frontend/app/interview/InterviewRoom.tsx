@@ -765,9 +765,9 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     try {
       const finalTopic =
         cleanTopic || customTopic || "Full Stack Development (MERN/MEAN)";
-        const API_BASE= "http://localhost:8000";
+        // const API_BASE= "http://localhost:8000";
       // const res = await fetch(`${API_BASE_URL}/api/chat`, {
-      const res = await fetch(`${API_BASE}/api/chat`, {
+      const res = await fetch(`${API_BASE_URL}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

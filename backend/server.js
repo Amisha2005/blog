@@ -11,10 +11,12 @@ const authRoute = require("./Router/auth-router");
 const adminRoutes = require("./Router/admin");// In-memory store (restart server → loses history → ok for dev)
 const topicRoutes = require("./Router/topicRoutes");
 const corsOptions = {
-  origin: ["http://localhost:3000","https://nova-tech-rose.vercel.app"],
+  origin: ["http://localhost:3000", "https://nova-tech-rose.vercel.app"],
   methods: "GET,POST,PUT,DELETE,PATCH,HEAD",
   credentials: true,
 };
+const axios = require("axios");
+
 app.use(cors(corsOptions));
 
 
@@ -32,7 +34,7 @@ const groq = new Groq({
 
 
 
-const conversationHistory = new Map(); 
+const conversationHistory = new Map();
 
 setInterval(() => {
   for (const [id, hist] of conversationHistory.entries()) {
@@ -43,112 +45,138 @@ setInterval(() => {
 }, 30 * 60 * 1000);
 
 app.post("/api/chat", async (req, res) => {
-  const { chat: userMessageRaw, topic, difficulty, sessionId,resumeText="", } = req.body;
-
+  const { chat: userMessage, topic, difficulty, sessionId, resumeText = "", } = req.body;
   if (!sessionId) return res.status(400).json({ reply: "Missing sessionId" });
   if (!topic?.trim()) return res.json({ reply: "Error: No interview topic selected." });
-
-  const userMessage = (userMessageRaw || "").trim();
-  if (!userMessage) return res.status(400).json({ reply: "Please type a message." });
-
-  let history = conversationHistory.get(sessionId) || [];
-
-  // Special "start" handling only once
-  let effectiveUserMessage = userMessage;
-  if (userMessage.toLowerCase() === "start" && history.length === 0) {
-    effectiveUserMessage = "Start the interview now. Ask the first question appropriate for the difficulty.";
-  }
-
-  history.push({
-  role: "user",
-  content: effectiveUserMessage,
-  timestamp: Date.now()
-});
-  let resumeSection = "";
-  if (resumeText?.trim().length > 100) {
-    const safeResume = resumeText.trim().substring(0, 9000);
-    resumeSection = `
-Candidate's actual experience from uploaded resume:
---------------------------------------------------------------------------------
-${safeResume}
---------------------------------------------------------------------------------
-
-CRITICAL INSTRUCTIONS:
-• You MUST personalize almost every question using information from the resume when possible.
-• Refer to specific projects, companies, technologies, durations, roles mentioned in the resume.
-• Example: if resume says "Developed e-commerce platform using Next.js and Stripe", ask about SSR vs CSR trade-offs, payment webhook handling, etc.
-• If resume mentions no relevant experience for this topic → fall back to standard questions.
-• Keep using resume context for the ENTIRE interview — do NOT forget it after the first few questions.
-`.trim();
-  }
-
-  const messages = [
-    {
-      role: "system",
-      content: `
-You are Nova, a strict, professional, and adaptive technical interviewer.
-
-Topic: "${topic}"
-You MUST ONLY ask questions about "${topic}". Never go off-topic.
-
-Difficulty: ${difficulty || "Medium"} — follow strictly!
-
-${resumeSection}
-
-Easy: basic definitions, simple concepts (e.g. "What is useState?")
-Medium: intermediate + practical (e.g. "Explain useEffect cleanup?")
-Hard: senior-level, design, internals, trade-offs (e.g. "Design concurrent mode scheduler")
-
-Rules (must obey):
-- Ask **ONE** clear question at a time.
-- After answer → wait for "continue", "next", or "skip" to ask next.
-- "skip" → move to next without comment.
-- "continue"/"next" → ask next logical question (progress easy → hard).
-- NEVER explain, hint, praise, criticize during interview — stay 100% neutral.
-- ONLY when user says "stop" or "done" → reply exactly: "INTERVIEW_COMPLETE" followed by a short neutral message.
-- Keep replies **very short**: just the question (or end message).
-- Vary / shuffle questions — no fixed list or repeats.
-- Ask different questions every time. Don't repeat the questions.
-- No chit-chat, greetings, or extra text.
-`.trim(),
-    },
-    ...history,
-  ];
-
   try {
-    const chatCompletion = await groq.chat.completions.create({
-      messages,
-      model: "llama-3.3-70b-versatile",
-      temperature: 0.7,          // slightly higher → more varied questions
-      max_tokens: 300,           // questions don't need 500 tokens
+    // 🔥 Send request to Python backend
+    const response = await axios.post("http://localhost:8000/api/chat", {
+      chat:userMessage,
+      topic,
+      difficulty,
+      sessionId,
+      resumeText
     });
 
-    let botReply = chatCompletion.choices[0]?.message?.content?.trim() || "No response.";
+    // 🔥 Get response from Python
+    const data = response.data;
 
-    // Add AI reply to history
-    history.push({
-  role: "assistant",
-  content: botReply,
-  timestamp: Date.now()
-});
+    // Return same response to frontend
+    res.json(data);
 
-    // Save updated history
-    conversationHistory.set(sessionId, history);
-
-    // Detect end (for frontend to know)
-    const isComplete = botReply.includes("INTERVIEW_COMPLETE") || userMessage.toLowerCase() === "stop";
-
-    if (isComplete) {
-      botReply = botReply.replace("INTERVIEW_COMPLETE", "Interview complete. Thank you!");
-      // Frontend can now call /api/evaluate
-    }
-
-    res.json({ reply: botReply, isComplete });
   } catch (error) {
-    console.error("Groq Error:", error.message);
-    res.status(500).json({ reply: "Server error. Try again later." });
+    console.error("Python API Error:", error.message);
+    res.status(500).json({ reply: "Backend error. Try again." });
   }
 });
+
+// app.post("/api/chat", async (req, res) => {
+//   const { chat: userMessageRaw, topic, difficulty, sessionId,resumeText="", } = req.body;
+
+//   if (!sessionId) return res.status(400).json({ reply: "Missing sessionId" });
+//   if (!topic?.trim()) return res.json({ reply: "Error: No interview topic selected." });
+
+//   const userMessage = (userMessageRaw || "").trim();
+//   if (!userMessage) return res.status(400).json({ reply: "Please type a message." });
+
+//   let history = conversationHistory.get(sessionId) || [];
+
+//   // Special "start" handling only once
+//   let effectiveUserMessage = userMessage;
+//   if (userMessage.toLowerCase() === "start" && history.length === 0) {
+//     effectiveUserMessage = "Start the interview now. Ask the first question appropriate for the difficulty.";
+//   }
+
+//   history.push({
+//   role: "user",
+//   content: effectiveUserMessage,
+//   timestamp: Date.now()
+// });
+//   let resumeSection = "";
+//   if (resumeText?.trim().length > 100) {
+//     const safeResume = resumeText.trim().substring(0, 9000);
+//     resumeSection = `
+// Candidate's actual experience from uploaded resume:
+// --------------------------------------------------------------------------------
+// ${safeResume}
+// --------------------------------------------------------------------------------
+
+// CRITICAL INSTRUCTIONS:
+// • You MUST personalize almost every question using information from the resume when possible.
+// • Refer to specific projects, companies, technologies, durations, roles mentioned in the resume.
+// • Example: if resume says "Developed e-commerce platform using Next.js and Stripe", ask about SSR vs CSR trade-offs, payment webhook handling, etc.
+// • If resume mentions no relevant experience for this topic → fall back to standard questions.
+// • Keep using resume context for the ENTIRE interview — do NOT forget it after the first few questions.
+// `.trim();
+//   }
+
+//   const messages = [
+//     {
+//       role: "system",
+//       content: `
+// You are Nova, a strict, professional, and adaptive technical interviewer.
+
+// Topic: "${topic}"
+// You MUST ONLY ask questions about "${topic}". Never go off-topic.
+
+// Difficulty: ${difficulty || "Medium"} — follow strictly!
+
+// ${resumeSection}
+
+// Easy: basic definitions, simple concepts (e.g. "What is useState?")
+// Medium: intermediate + practical (e.g. "Explain useEffect cleanup?")
+// Hard: senior-level, design, internals, trade-offs (e.g. "Design concurrent mode scheduler")
+
+// Rules (must obey):
+// - Ask **ONE** clear question at a time.
+// - After answer → wait for "continue", "next", or "skip" to ask next.
+// - "skip" → move to next without comment.
+// - "continue"/"next" → ask next logical question (progress easy → hard).
+// - NEVER explain, hint, praise, criticize during interview — stay 100% neutral.
+// - ONLY when user says "stop" or "done" → reply exactly: "INTERVIEW_COMPLETE" followed by a short neutral message.
+// - Keep replies **very short**: just the question (or end message).
+// - Vary / shuffle questions — no fixed list or repeats.
+// - Ask different questions every time. Don't repeat the questions.
+// - No chit-chat, greetings, or extra text.
+// `.trim(),
+//     },
+//     ...history,
+//   ];
+
+//   try {
+//     const chatCompletion = await groq.chat.completions.create({
+//       messages,
+//       model: "llama-3.3-70b-versatile",
+//       temperature: 0.7,          // slightly higher → more varied questions
+//       max_tokens: 300,           // questions don't need 500 tokens
+//     });
+
+//     let botReply = chatCompletion.choices[0]?.message?.content?.trim() || "No response.";
+
+//     // Add AI reply to history
+//     history.push({
+//   role: "assistant",
+//   content: botReply,
+//   timestamp: Date.now()
+// });
+
+//     // Save updated history
+//     conversationHistory.set(sessionId, history);
+
+//     // Detect end (for frontend to know)
+//     const isComplete = botReply.includes("INTERVIEW_COMPLETE") || userMessage.toLowerCase() === "stop";
+
+//     if (isComplete) {
+//       botReply = botReply.replace("INTERVIEW_COMPLETE", "Interview complete. Thank you!");
+//       // Frontend can now call /api/evaluate
+//     }
+
+//     res.json({ reply: botReply, isComplete });
+//   } catch (error) {
+//     console.error("Groq Error:", error.message);
+//     res.status(500).json({ reply: "Server error. Try again later." });
+//   }
+// });
 
 // ── Evaluation Endpoint ────────────────────────────────────────
 app.post("/api/evaluate", async (req, res) => {

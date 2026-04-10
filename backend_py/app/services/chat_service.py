@@ -40,6 +40,8 @@ async def handle_chat(req):
     )
     reply=response.choices[0].message.content
     return {"reply": reply}
+
+# /////////////////////////////////////////////////////// #
     if not req.sessionId:
         return {"reply": "Missing sessionId"}
 
@@ -59,16 +61,3 @@ async def handle_chat(req):
     })
 
     conversation_history[req.sessionId] = history
-
-    # TEMP response (replace Groq later)
- 
-        # "reply": f"Question about {req.topic} ({req.difficulty})"
-    if "start" in user_message:
-                reply = f"Starting interview on {req.topic} with difficulty {req.difficulty}."
-    elif "react" in user_message:
-            reply= "What is useEffectt hook?"
-    else:
-                reply="Explain your answer in detail and more clearly"
-        
-            
-    return {"reply": reply}

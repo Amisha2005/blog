@@ -5,12 +5,12 @@ from app.models.schemas import ChatRequest
 
 router = APIRouter(prefix="/api")
 
-class ChatRequest(BaseModel):
-    chat: str
-    topic: str
-    difficulty: str = "Medium"
-    sessionId: str
-    resumeText: str = ""
+# class ChatRequest(BaseModel):
+#     chat: str
+#     topic: str
+#     difficulty: str = "Medium"
+#     sessionId: str
+#     resumeText: str = ""
 
 @router.post("/chat")
 async def chat(req: ChatRequest):
