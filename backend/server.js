@@ -179,88 +179,111 @@ app.post("/api/chat", async (req, res) => {
 // });
 
 // ── Evaluation Endpoint ────────────────────────────────────────
+
 app.post("/api/evaluate", async (req, res) => {
-  const { sessionId, topic, difficulty } = req.body;
+  const { sessionId, topic, difficulty, presenceScore, candidateName } = req.body;
 
   if (!sessionId) return res.status(400).json({ error: "Missing sessionId" });
 
-  const history = conversationHistory.get(sessionId) || [];
-  if (history.length < 2) { // at least a few Q&A pairs
-    return res.json({
-      overall: 0,
-      technical_accuracy: 0,
-      communication: 0,
-      problem_solving: 0,
-      strengths: [],
-      weaknesses: [],
-      feedback: "Not enough content to evaluate properly.",
-    });
-  }
-
-  const transcript = history
-    .map(m => `${m.role === "user" ? "Candidate" : "Interviewer"}: ${m.content}`)
-    .join("\n\n");
-
-  const evalMessages = [
-    {
-      role: "system",
-      content: `You are an experienced hiring manager evaluating a ${difficulty || "Medium"} level ${topic} technical interview.
-
-Transcript:
-${transcript}
-
-Evaluate **only** based on answers (ignore interviewer messages).
-Score 0–100 in:
-- overall
-- technical_accuracy
-- communication
-- problem_solving
-
-Also provide:
-- strengths: string[] (bullet points)
-- weaknesses: string[] (bullet points)
-- feedback: one paragraph summary
-
-Return **valid JSON only**, no markdown, no extra text:
-{
-  "overall": number,
-  "technical_accuracy": number,
-  "communication": number,
-  "problem_solving": number,
-  "strengths": ["...", "..."],
-  "weaknesses": ["...", "..."],
-  "feedback": "string"
-}`
-    }
-  ];
-
   try {
-    const completion = await groq.chat.completions.create({
-      messages: evalMessages,
-      model: "llama-3.3-70b-versatile",
-      temperature: 0.4, // lower = more consistent scoring
-      max_tokens: 800,
+    const response = await axios.post("http://localhost:8000/api/evaluate", {
+      sessionId,
+      topic,
+      difficulty,
+      presenceScore,
+      candidateName
     });
 
-    const raw = completion.choices[0]?.message?.content?.trim() || "{}";
+    res.json(response.data);
 
-    let parsed;
-    try {
-      parsed = JSON.parse(raw);
-    } catch (e) {
-      console.error("JSON parse failed:", raw);
-      parsed = { overall: 50, feedback: "Evaluation parsing error." };
-    }
-
-    // Optional: clean session after evaluation
-    // conversationHistory.delete(sessionId);
-
-    res.json(parsed);
   } catch (error) {
-    console.error("Evaluation error:", error);
+    console.error("Python Eval Error:", error.message);
     res.status(500).json({ error: "Evaluation failed" });
   }
 });
+
+// app.post("/api/evaluate", async (req, res) => {
+//   const { sessionId, topic, difficulty } = req.body;
+
+//   if (!sessionId) return res.status(400).json({ error: "Missing sessionId" });
+
+//   const history = conversationHistory.get(sessionId) || [];
+//   if (history.length < 2) { // at least a few Q&A pairs
+//     return res.json({
+//       overall: 0,
+//       technical_accuracy: 0,
+//       communication: 0,
+//       problem_solving: 0,
+//       strengths: [],
+//       weaknesses: [],
+//       feedback: "Not enough content to evaluate properly.",
+//     });
+//   }
+
+//   const transcript = history
+//     .map(m => `${m.role === "user" ? "Candidate" : "Interviewer"}: ${m.content}`)
+//     .join("\n\n");
+
+//   const evalMessages = [
+//     {
+//       role: "system",
+//       content: `You are an experienced hiring manager evaluating a ${difficulty || "Medium"} level ${topic} technical interview.
+
+// Transcript:
+// ${transcript}
+
+// Evaluate **only** based on answers (ignore interviewer messages).
+// Score 0–100 in:
+// - overall
+// - technical_accuracy
+// - communication
+// - problem_solving
+
+// Also provide:
+// - strengths: string[] (bullet points)
+// - weaknesses: string[] (bullet points)
+// - feedback: one paragraph summary
+
+// Return **valid JSON only**, no markdown, no extra text:
+// {
+//   "overall": number,
+//   "technical_accuracy": number,
+//   "communication": number,
+//   "problem_solving": number,
+//   "strengths": ["...", "..."],
+//   "weaknesses": ["...", "..."],
+//   "feedback": "string"
+// }`
+//     }
+//   ];
+
+//   try {
+//     const completion = await groq.chat.completions.create({
+//       messages: evalMessages,
+//       model: "llama-3.3-70b-versatile",
+//       temperature: 0.4, // lower = more consistent scoring
+//       max_tokens: 800,
+//     });
+
+//     const raw = completion.choices[0]?.message?.content?.trim() || "{}";
+
+//     let parsed;
+//     try {
+//       parsed = JSON.parse(raw);
+//     } catch (e) {
+//       console.error("JSON parse failed:", raw);
+//       parsed = { overall: 50, feedback: "Evaluation parsing error." };
+//     }
+
+//     // Optional: clean session after evaluation
+//     // conversationHistory.delete(sessionId);
+
+//     res.json(parsed);
+//   } catch (error) {
+//     console.error("Evaluation error:", error);
+//     res.status(500).json({ error: "Evaluation failed" });
+//   }
+// });
 
 app.post("/api/code-review", async (req, res) => {
   const { code, language = "bash", topic = "", difficulty = "Medium" } = req.body || {};
