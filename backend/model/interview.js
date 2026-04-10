@@ -16,6 +16,10 @@ const interviewTopicSchema = new mongoose.Schema(
       type: String,
       default: "", // URL of the image
     },
+    isDemoTopic: {
+      type: Boolean,
+      default: false,
+    },
     date: {
       type: Date,
       default: Date.now,

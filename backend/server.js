@@ -34,6 +34,73 @@ const groq = new Groq({
 
 
 const conversationHistory = new Map(); 
+const recentFirstQuestionsByTopic = new Map();
+
+const START_VARIANTS = [
+  "Start the interview now. Ask one practical opening question appropriate for the difficulty.",
+  "Begin immediately with one scenario-based first question for the selected topic and difficulty.",
+  "Kick off with one non-generic opening interview question tailored to the topic and level.",
+  "Start the interview with one concise question focused on real-world application, not definitions only.",
+];
+
+const normalizeTopicKey = (value = "") => value.trim().toLowerCase();
+
+const getRandomStartVariant = () => {
+  const index = Math.floor(Math.random() * START_VARIANTS.length);
+  return START_VARIANTS[index];
+};
+
+const rememberFirstQuestion = (topicKey, question) => {
+  if (!topicKey || !question) return;
+  const list = recentFirstQuestionsByTopic.get(topicKey) || [];
+  const normalized = question.trim();
+  const next = [normalized, ...list.filter((item) => item !== normalized)].slice(0, 12);
+  recentFirstQuestionsByTopic.set(topicKey, next);
+};
+
+const normalizeQuestion = (text = "") =>
+  text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const isRecentlyUsedFirstQuestion = (candidate, recentList) => {
+  const normalized = normalizeQuestion(candidate);
+  if (!normalized) return false;
+  return recentList.some((item) => normalizeQuestion(item) === normalized);
+};
+
+const buildFallbackOpeners = (topic, difficulty) => {
+  const safeTopic = topic?.trim() || "the selected topic";
+  const safeDifficulty = difficulty || "Medium";
+
+  if (/react/i.test(safeTopic)) {
+    return [
+      `In React, when would you choose useRef over useState, and why?`,
+      `How would you prevent unnecessary re-renders in a React component tree?`,
+      `Explain a practical case where useEffect cleanup is essential in React.`,
+      `How would you structure state for a medium-size React form with validation?`,
+      `What trade-offs do you consider when memoizing components in React?`,
+    ];
+  }
+
+  return [
+    `For ${safeTopic}, what is one common real-world problem you would solve first at ${safeDifficulty} level?`,
+    `In ${safeTopic}, explain one practical trade-off you would evaluate in production code.`,
+    `For ${safeTopic}, how would you debug a bug that appears only under real user load?`,
+    `In ${safeTopic}, what design decision would you revisit first when scaling from prototype to production?`,
+  ];
+};
+
+const pickUniqueOpeningQuestion = (topic, difficulty, recentList = []) => {
+  const blocked = new Set(recentList.map((q) => normalizeQuestion(q)).filter(Boolean));
+  const candidates = buildFallbackOpeners(topic, difficulty);
+  const available = candidates.filter((q) => !blocked.has(normalizeQuestion(q)));
+  const pool = available.length ? available : candidates;
+  const index = Math.floor(Math.random() * pool.length);
+  return pool[index];
+};
 
 setInterval(() => {
   for (const [id, hist] of conversationHistory.entries()) {
@@ -53,11 +120,14 @@ app.post("/api/chat", async (req, res) => {
   if (!userMessage) return res.status(400).json({ reply: "Please type a message." });
 
   let history = conversationHistory.get(sessionId) || [];
+  const isNewSession = history.length === 0;
+  const topicKey = normalizeTopicKey(topic);
+  const recentFirstQuestions = recentFirstQuestionsByTopic.get(topicKey) || [];
 
   // Special "start" handling only once
   let effectiveUserMessage = userMessage;
-  if (userMessage.toLowerCase() === "start" && history.length === 0) {
-    effectiveUserMessage = "Start the interview now. Ask the first question appropriate for the difficulty.";
+  if (userMessage.toLowerCase() === "start" && isNewSession) {
+    effectiveUserMessage = getRandomStartVariant();
   }
 
   history.push({
@@ -65,6 +135,20 @@ app.post("/api/chat", async (req, res) => {
   content: effectiveUserMessage,
   timestamp: Date.now()
 });
+
+  if (isNewSession && userMessage.toLowerCase() === "start") {
+    const openingQuestion = pickUniqueOpeningQuestion(topic, difficulty, recentFirstQuestions);
+    history.push({
+      role: "assistant",
+      content: openingQuestion,
+      timestamp: Date.now(),
+    });
+
+    conversationHistory.set(sessionId, history);
+    rememberFirstQuestion(topicKey, openingQuestion);
+    return res.json({ reply: openingQuestion, isComplete: false });
+  }
+
   let resumeSection = "";
   if (resumeText?.trim().length > 100) {
     const safeResume = resumeText.trim().substring(0, 9000);
@@ -111,20 +195,80 @@ Rules (must obey):
 - Vary / shuffle questions — no fixed list or repeats.
 - Ask different questions every time. Don't repeat the questions.
 - No chit-chat, greetings, or extra text.
+
+First-question diversity requirement:
+- For each new session of this topic, avoid repeating the same opener used recently.
+- If possible, ask a different first question style (conceptual, scenario, debugging, optimization, design).
+
+Recently used first questions for this topic (avoid these exact or near-identical openers):
+${recentFirstQuestions.length ? recentFirstQuestions.map((q, i) => `${i + 1}. ${q}`).join("\n") : "None recorded yet"}
 `.trim(),
     },
-    ...history,
+  ...history.map(({ role, content }) => ({ role, content })),
   ];
 
   try {
-    const chatCompletion = await groq.chat.completions.create({
-      messages,
+    const requestOptions = {
       model: "llama-3.3-70b-versatile",
-      temperature: 0.7,          // slightly higher → more varied questions
-      max_tokens: 300,           // questions don't need 500 tokens
-    });
+      temperature: 0.9,
+      max_tokens: 300,
+    };
 
-    let botReply = chatCompletion.choices[0]?.message?.content?.trim() || "No response.";
+    let botReply = "No response.";
+
+    if (isNewSession && userMessage.toLowerCase() === "start") {
+      const forbidden = new Set(
+        recentFirstQuestions.map((q) => normalizeQuestion(q)).filter(Boolean),
+      );
+
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const avoidLines = recentFirstQuestions.length
+          ? recentFirstQuestions.map((q, i) => `${i + 1}. ${q}`).join("\n")
+          : "None";
+
+        const attemptMessages = [
+          ...messages,
+          {
+            role: "system",
+            content: `First-question uniqueness check (attempt ${attempt + 1}):
+- Do NOT ask any opener that is the same or very similar to the blocked list.
+- Output exactly one fresh interview question.
+
+Blocked openers:
+${avoidLines}`,
+          },
+        ];
+
+        const chatCompletion = await groq.chat.completions.create({
+          messages: attemptMessages,
+          ...requestOptions,
+        });
+
+        const candidate = chatCompletion.choices[0]?.message?.content?.trim() || "No response.";
+        const normalizedCandidate = normalizeQuestion(candidate);
+        botReply = candidate;
+
+        if (!forbidden.has(normalizedCandidate)) {
+          break;
+        }
+
+        forbidden.add(normalizedCandidate);
+      }
+
+      if (forbidden.has(normalizeQuestion(botReply))) {
+        const fallbacks = buildFallbackOpeners(topic, difficulty);
+        const uniqueFallback =
+          fallbacks.find((q) => !forbidden.has(normalizeQuestion(q))) ||
+          `For ${topic}, describe one practical scenario where your approach choice matters and justify it.`;
+        botReply = uniqueFallback;
+      }
+    } else {
+      const chatCompletion = await groq.chat.completions.create({
+        messages,
+        ...requestOptions,
+      });
+      botReply = chatCompletion.choices[0]?.message?.content?.trim() || "No response.";
+    }
 
     // Add AI reply to history
     history.push({
@@ -135,6 +279,10 @@ Rules (must obey):
 
     // Save updated history
     conversationHistory.set(sessionId, history);
+
+    if (isNewSession && userMessage.toLowerCase() === "start" && botReply) {
+      rememberFirstQuestion(topicKey, botReply);
+    }
 
     // Detect end (for frontend to know)
     const isComplete = botReply.includes("INTERVIEW_COMPLETE") || userMessage.toLowerCase() === "stop";

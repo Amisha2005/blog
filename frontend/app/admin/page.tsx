@@ -16,6 +16,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   LineChart,
   Line,
   XAxis,
@@ -39,7 +46,32 @@ interface User {
   isAdmin: boolean;
 }
 
+interface InterviewTopic {
+  _id: string;
+  topicName: string;
+  isDemoTopic?: boolean;
+}
+
+interface LeaderboardEntry {
+  candidateName: string;
+  topic: string;
+  finalScore: number;
+  overall: number;
+  presenceScore: number;
+  difficulty: string;
+  createdAt: string;
+}
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
+const DEMO_TOPIC_NAMES = new Set([
+  "react",
+  "system design",
+  "javascript",
+  "node.js",
+  "mongodb",
+  "typescript",
+  "sql",
+]);
 
 export default function AdminDashboard() {
   const { isAdmin, authorizationToken } = useAuth();
@@ -51,6 +83,15 @@ export default function AdminDashboard() {
   });
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [topics, setTopics] = useState<InterviewTopic[]>([]);
+  const [selectedTopic, setSelectedTopic] = useState<string>("");
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+
+  const isDemoTopic = (topic?: InterviewTopic) => {
+    if (!topic) return false;
+    return Boolean(topic.isDemoTopic) || DEMO_TOPIC_NAMES.has(topic.topicName.trim().toLowerCase());
+  };
 
   // Form State for Interview Topic
   const [newTopic, setNewTopic] = useState({
@@ -103,6 +144,45 @@ export default function AdminDashboard() {
     }
   };
 
+  const fetchTopics = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/topics`);
+      if (res.ok) {
+        const data = await res.json();
+        const topicsArray = Array.isArray(data) ? data : (data.topics || []);
+        setTopics(topicsArray);
+        if (topicsArray.length > 0) {
+          setSelectedTopic(topicsArray[0].topicName);
+        }
+      } else {
+        setTopics([]);
+      }
+    } catch (error) {
+      console.error("Failed to fetch topics", error);
+      setTopics([]);
+    }
+  };
+
+  const fetchLeaderboard = async (topic: string) => {
+    if (!topic) return;
+    setLeaderboardLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/leaderboard?topic=${encodeURIComponent(topic)}&limit=10`);
+      if (res.ok) {
+        const data = await res.json();
+        const leaderboardArray = Array.isArray(data) ? data : (data.leaderboard || []);
+        setLeaderboard(leaderboardArray);
+      } else {
+        setLeaderboard([]);
+      }
+    } catch (error) {
+      console.error("Failed to fetch leaderboard", error);
+      setLeaderboard([]);
+    } finally {
+      setLeaderboardLoading(false);
+    }
+  };
+
   const handleAddTopic = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTopic.topicName || !newTopic.description) {
@@ -136,8 +216,15 @@ export default function AdminDashboard() {
     if (isAdmin) {
       fetchStats();
       fetchUsers();
+      fetchTopics();
     }
   }, [isAdmin, authorizationToken]);
+
+  useEffect(() => {
+    if (selectedTopic) {
+      fetchLeaderboard(selectedTopic);
+    }
+  }, [selectedTopic]);
 
   return (
     <div className="container mx-auto space-y-10 px-4 py-10 md:px-6 md:py-12">
@@ -189,39 +276,74 @@ export default function AdminDashboard() {
         <Card className="glass-panel animate-fade-up rounded-2xl" style={{ animationDelay: "260ms" }}>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Trophy className="h-5 w-5" /> User Leaderboard
+              <Trophy className="h-5 w-5" /> Interview Leaderboard
+              {selectedTopic && isDemoTopic(topics.find((t) => t.topicName === selectedTopic)) && (
+                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-semibold ml-2">
+                  DEMO TOPIC
+                </span>
+              )}
             </CardTitle>
-            <CardDescription>Recently joined users</CardDescription>
+            <CardDescription>Top performers by interview topic</CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border/60">
-                    <th className="text-left py-3">Username</th>
-                    <th className="text-left py-3">Email</th>
-                    <th className="text-left py-3">Select</th>
-                    <th className="text-center py-3">Admin</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.slice(0, 10).map((user) => (
-                    <tr key={user._id} className="border-b border-border/50 transition hover:bg-muted/40">
-                      <td className="py-3 font-medium">{user.username}</td>
-                      <td className="py-3 text-muted-foreground">
-                        {user.email}
-                      </td>
-                      <td className="py-3 text-sm">
-                        {new Date(user.createdAt).toLocaleDateString()}
-                      </td>
-                      <td className="py-3 text-center">
-                        {user.isAdmin ? "✅" : "❌"}
-                      </td>
-                    </tr>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="topic-filter">Select Topic</Label>
+              <Select value={selectedTopic} onValueChange={setSelectedTopic}>
+                <SelectTrigger id="topic-filter" className="rounded-xl">
+                  <SelectValue placeholder="Choose a topic" />
+                </SelectTrigger>
+                <SelectContent>
+                  {topics.map((topic) => (
+                    <SelectItem key={topic._id} value={topic.topicName}>
+                      {topic.topicName}
+                      {isDemoTopic(topic) ? " (Demo)" : ""}
+                    </SelectItem>
                   ))}
-                </tbody>
-              </table>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Topics marked with DEMO are demo interview topics.</p>
             </div>
+
+            {leaderboardLoading ? (
+              <div className="text-center py-6 text-muted-foreground">
+                Loading leaderboard...
+              </div>
+            ) : leaderboard.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border/60">
+                      <th className="text-left py-3">Rank</th>
+                      <th className="text-left py-3">Candidate</th>
+                      <th className="text-left py-3">Difficulty</th>
+                      <th className="text-center py-3">Overall</th>
+                      <th className="text-center py-3">Presence</th>
+                      <th className="text-center py-3">Final Score</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {leaderboard.map((entry, index) => (
+                      <tr key={index} className="border-b border-border/50 transition hover:bg-muted/40">
+                        <td className="py-3">
+                          <span className="font-bold">#{index + 1}</span>
+                        </td>
+                        <td className="py-3 font-medium">{entry.candidateName}</td>
+                        <td className="py-3 text-muted-foreground text-sm">{entry.difficulty}</td>
+                        <td className="py-3 text-center">{entry.overall?.toFixed(1) || "N/A"}</td>
+                        <td className="py-3 text-center">{entry.presenceScore?.toFixed(1) || "N/A"}</td>
+                        <td className="py-3 text-center font-bold text-green-600">
+                          {entry.finalScore?.toFixed(1) || "N/A"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-6 text-muted-foreground">
+                No leaderboard data for this topic yet.
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -300,22 +422,24 @@ export default function AdminDashboard() {
           <CardTitle>User Sign-up Trend</CardTitle>
           <CardDescription>Monthly growth in registered users</CardDescription>
         </CardHeader>
-        <CardContent className="h-[400px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={userGrowthData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="month" />
-              <YAxis />
-              <Tooltip />
-              <Line
-                type="monotone"
-                dataKey="users"
-                stroke="#3b82f6"
-                strokeWidth={3}
-                dot={{ r: 6 }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+        <CardContent>
+          <div className="w-full" style={{ height: "400px" }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={userGrowthData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" />
+                <YAxis />
+                <Tooltip />
+                <Line
+                  type="monotone"
+                  dataKey="users"
+                  stroke="#3b82f6"
+                  strokeWidth={3}
+                  dot={{ r: 6 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
         </CardContent>
       </Card>
     </div>

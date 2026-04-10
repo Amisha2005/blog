@@ -29,7 +29,7 @@ const recentPosts = [
   {
     id: 1,
     src: "https://tse3.mm.bing.net/th/id/OIP.oR7K377pdzitXWkOEdSIEQHaEK?pid=Api&P=0&h=180",
-    title: "Mastering HTML in 2025",
+    title: "React Fundamentals",
     category: "TypeScript",
     date: "Dec 2",
    
@@ -45,7 +45,7 @@ const recentPosts = [
   {
     id: 3,
     src: "https://tse4.mm.bing.net/th/id/OIP.dkhkj1S3HeuN_Q991Kpb4wHaE7?pid=Api&P=0&h=180",
-    title: "Tailwind Css",
+    title: "System Design",
     category: "Design",
     date: "Nov 28",
     
@@ -101,9 +101,9 @@ export default function Home() {
       <section className="space-y-8">
         <div className="animate-fade-up flex flex-col items-start justify-between gap-4 md:flex-row md:items-end">
           <div>
-            <h2 className="text-3xl font-bold md:text-4xl">Free Interview Demo</h2>
+            <h2 className="text-3xl font-bold md:text-4xl">Interview Topics (Demo)</h2>
             <p className="mt-2 text-muted-foreground">
-              Pick a lane and jump into instant mock interviews.
+              Pick a topic marked as Demo and jump into instant mock interviews.
             </p>
           </div>
           <Badge variant="outline" className="rounded-full px-4 py-1 text-xs tracking-wide">
@@ -131,9 +131,14 @@ export default function Home() {
               </CardHeader>
 
               <CardContent className="space-y-3 p-5">
-                <Badge variant="outline" className="w-fit rounded-full">
-                  {post.category}
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="w-fit rounded-full">
+                    {post.category}
+                  </Badge>
+                  <Badge className="rounded-full border-0 bg-blue-100 text-blue-700">
+                    Demo Topic
+                  </Badge>
+                </div>
                 <CardTitle className="line-clamp-2 text-lg transition-colors group-hover:text-primary">
                   {post.title}
                 </CardTitle>

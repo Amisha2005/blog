@@ -20,8 +20,6 @@ import {
   MoveRight,
   Sparkles,
   TerminalSquare,
-  CheckCircle2,
-  AlertTriangle,
 } from "lucide-react";
 
 import {
@@ -142,7 +140,11 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const lastObjectAlertTimeRef = useRef<number>(0);
   const OBJECT_ALERT_COOLDOWN_MS = 10000;
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+  const codeTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const shouldAutoScrollRef = useRef(true);
+  const previousMessageCountRef = useRef(0);
+  const [showNewMessagesButton, setShowNewMessagesButton] = useState(false);
   const recognitionRef = useRef<any>(null);
   const hasEndedRef = useRef(false);
   const timerActiveRef = useRef(false);
@@ -596,9 +598,52 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     }
   }, [cleanTopic, customTopic]);
 
-  // Scroll to bottom
+  const handleChatScroll = () => {
+    const container = chatScrollRef.current;
+    if (!container) return;
+
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+    shouldAutoScrollRef.current = distanceFromBottom < 72;
+
+    if (shouldAutoScrollRef.current) {
+      setShowNewMessagesButton(false);
+    }
+  };
+
+  const jumpToLatestMessage = () => {
+    const container = chatScrollRef.current;
+    if (!container) return;
+
+    container.scrollTo({
+      top: container.scrollHeight,
+      behavior: "smooth",
+    });
+    shouldAutoScrollRef.current = true;
+    setShowNewMessagesButton(false);
+  };
+
+  // Keep auto-scroll inside the chat panel only when user is near bottom.
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const container = chatScrollRef.current;
+    if (!container) return;
+
+    const messageCountIncreased = messages.length > previousMessageCountRef.current;
+    previousMessageCountRef.current = messages.length;
+
+    if (!messageCountIncreased) return;
+
+    if (!shouldAutoScrollRef.current) {
+      setShowNewMessagesButton(true);
+      return;
+    }
+
+    container.scrollTo({
+      top: container.scrollHeight,
+      behavior: "smooth",
+    });
+
+    setShowNewMessagesButton(false);
   }, [messages]);
 
   useEffect(() => {
@@ -672,12 +717,50 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     });
   };
 
-  const useCodeInPrompt = () => {
+  const sendCodeToPrompt = () => {
     const snippet = codeInput.trim();
     if (!snippet) return;
 
-    const codeBlock = `\`\`\`bash\n${snippet}\n\`\`\``;
-    setInput((prev) => (prev?.trim() ? `${prev}\n\n${codeBlock}` : codeBlock));
+    if (!interviewStarted) {
+      setMessages((p) => [
+        ...p,
+        {
+          text: "Use the setup section and click Start Interview to begin.",
+          isBot: true,
+        },
+      ]);
+      return;
+    }
+
+    if (isLoading || interviewEnded || isPaused) return;
+
+    setMessages((prev) => [...prev, { text: snippet, isBot: false }]);
+    sendToBackend(snippet);
+  };
+
+  const clearCodeInput = () => {
+    setCodeInput("");
+    setCodeCheckResult({ status: "idle", message: "" });
+    setAiCodeResult(null);
+  };
+
+  const handleCodeTextareaKeyDown = (
+    e: React.KeyboardEvent<HTMLTextAreaElement>,
+  ) => {
+    if (e.key !== "Tab") return;
+
+    e.preventDefault();
+    const target = e.currentTarget;
+    const start = target.selectionStart;
+    const end = target.selectionEnd;
+    const nextValue = `${codeInput.slice(0, start)}    ${codeInput.slice(end)}`;
+
+    setCodeInput(nextValue);
+
+    requestAnimationFrame(() => {
+      target.selectionStart = start + 4;
+      target.selectionEnd = start + 4;
+    });
   };
 
   const runAiCodeCheck = async () => {
@@ -1245,7 +1328,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
         <div className="flex gap-6">
           {/* LEFT: Chat */}
-          <Card className="flex-[0.7] h-[85vh] flex flex-col bg-white/90 dark:bg-black/70 backdrop-blur-xl border border-gray-200/50 dark:border-white/10">
+          <Card className="relative flex-[0.7] h-[85vh] flex flex-col bg-white/90 dark:bg-black/70 backdrop-blur-xl border border-gray-200/50 dark:border-white/10">
             {/* {cameraActive && (
               <div
                 className="absolute top-3 right-3 bg-black/65 text-white text-sm px-3 py-2 rounded-md font-mono z-10 shadow"
@@ -1281,7 +1364,11 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+            <div
+              ref={chatScrollRef}
+              onScroll={handleChatScroll}
+              className="flex-1 overflow-y-auto px-6 py-4 space-y-4"
+            >
               {messages.map((msg, index) => (
                 <div
                   key={index}
@@ -1311,8 +1398,19 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                   )}
                 </div>
               ))}
-              <div ref={messagesEndRef} />
             </div>
+            {showNewMessagesButton && (
+              <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-20">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={jumpToLatestMessage}
+                  className="rounded-full bg-purple-600 text-white shadow-lg hover:bg-purple-700"
+                >
+                  New messages
+                </Button>
+              </div>
+            )}
             {/* <div className="p-6 border-t">
               <form onSubmit={handleSubmit} className="flex gap-4 items-end">
                 <Button
@@ -1394,7 +1492,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                 </button>
 
                 {/* Mic Toggle */}
-                <button
+                {/* <button
                   type="button"
                   onClick={toggleMic}
                   disabled={!interviewStarted}
@@ -1406,7 +1504,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                   ) : (
                     <MicOff className="h-5 w-5 text-white" />
                   )}
-                </button>
+                </button> */}
 
                 {/* Input */}
                 {/* <input
@@ -1554,8 +1652,10 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
             </div>
 
             <Textarea
+              ref={codeTextareaRef}
               value={codeInput}
               onChange={(e) => setCodeInput(e.target.value)}
+              onKeyDown={handleCodeTextareaKeyDown}
               placeholder="Write your Bash/script answer here..."
               className="min-h-60 resize-y bg-background font-mono text-sm"
               disabled={interviewEnded}
@@ -1566,87 +1666,21 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={checkCodeSnippet}
-                disabled={interviewEnded}
+                onClick={clearCodeInput}
+                disabled={!codeInput.trim() || interviewEnded}
               >
-                Check Code
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={runAiCodeCheck}
-                disabled={!codeInput.trim() || interviewEnded || aiCheckLoading}
-              >
-                {aiCheckLoading ? "AI Checking..." : "AI Check & Output"}
+                Clear
               </Button>
               <Button
                 type="button"
                 size="sm"
                 className="bg-gradient-to-r from-cyan-600 to-blue-600 text-white"
-                onClick={useCodeInPrompt}
-                disabled={!codeInput.trim() || interviewEnded}
+                onClick={sendCodeToPrompt}
+                disabled={!codeInput.trim() || interviewEnded || isLoading || isPaused}
               >
-                Use in Prompt
+                Send to Prompt
               </Button>
             </div>
-
-            {codeCheckResult.status !== "idle" && (
-              <div className="mt-3 flex items-center gap-2 text-sm">
-                {codeCheckResult.status === "ok" ? (
-                  <CheckCircle2 className="h-4 w-4 text-green-600" />
-                ) : (
-                  <AlertTriangle className="h-4 w-4 text-amber-600" />
-                )}
-                <span
-                  className={
-                    codeCheckResult.status === "ok"
-                      ? "text-green-700 dark:text-green-400"
-                      : codeCheckResult.status === "error"
-                        ? "text-red-700 dark:text-red-400"
-                        : "text-amber-700 dark:text-amber-400"
-                  }
-                >
-                  {codeCheckResult.message}
-                </span>
-              </div>
-            )}
-
-            {aiCodeResult && (
-              <div className="mt-4 rounded-xl border border-cyan-500/30 bg-background/80 p-4 text-sm">
-                <p className="font-semibold text-cyan-700 dark:text-cyan-400">AI Review</p>
-                <p className="mt-1 text-muted-foreground">{aiCodeResult.summary}</p>
-
-                <p className="mt-3 font-semibold">Issues</p>
-                {aiCodeResult.issues.length > 0 ? (
-                  <ul className="mt-1 list-disc pl-5 text-muted-foreground space-y-1">
-                    {aiCodeResult.issues.map((issue, idx) => (
-                      <li key={idx}>{issue}</li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="mt-1 text-muted-foreground">No major issues found.</p>
-                )}
-
-                <p className="mt-3 font-semibold">Expected Output</p>
-                <pre className="mt-1 whitespace-pre-wrap rounded-md bg-muted p-3 text-xs">
-                  {aiCodeResult.expectedOutput}
-                </pre>
-
-                {aiCodeResult.correctedCode && (
-                  <>
-                    <p className="mt-3 font-semibold">Suggested Code</p>
-                    <pre className="mt-1 whitespace-pre-wrap rounded-md bg-muted p-3 text-xs">
-                      {aiCodeResult.correctedCode}
-                    </pre>
-                  </>
-                )}
-
-                <p className="mt-3 text-xs text-muted-foreground">
-                  Confidence: {aiCodeResult.confidence}
-                </p>
-              </div>
-            )}
           </Card>
         </div>
       </div>
