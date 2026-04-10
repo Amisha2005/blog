@@ -10,6 +10,7 @@ const cors = require("cors");
 const authRoute = require("./Router/auth-router");
 const adminRoutes = require("./Router/admin");// In-memory store (restart server → loses history → ok for dev)
 const topicRoutes = require("./Router/topicRoutes");
+const InterviewResult = require("./model/interviewResult");
 const corsOptions = {
   origin: ["http://localhost:3000","https://nova-tech-rose.vercel.app"],
   methods: "GET,POST,PUT,DELETE,PATCH,HEAD",
@@ -152,7 +153,7 @@ Rules (must obey):
 
 // ── Evaluation Endpoint ────────────────────────────────────────
 app.post("/api/evaluate", async (req, res) => {
-  const { sessionId, topic, difficulty } = req.body;
+  const { sessionId, topic, difficulty, presenceScore, candidateName } = req.body;
 
   if (!sessionId) return res.status(400).json({ error: "Missing sessionId" });
 
@@ -227,10 +228,76 @@ Return **valid JSON only**, no markdown, no extra text:
     // Optional: clean session after evaluation
     // conversationHistory.delete(sessionId);
 
-    res.json(parsed);
+    const safeOverall = Number.isFinite(Number(parsed?.overall))
+      ? Math.max(0, Math.min(100, Number(parsed.overall)))
+      : 0;
+    const safePresence = Number.isFinite(Number(presenceScore))
+      ? Math.max(0, Math.min(100, Number(presenceScore)))
+      : 65;
+    const computedFinal = Math.round(safePresence * 0.4 + safeOverall * 0.6);
+
+    try {
+      await InterviewResult.findOneAndUpdate(
+        { sessionId },
+        {
+          sessionId,
+          topic: (topic || "General").trim(),
+          difficulty: difficulty || "Medium",
+          candidateName: (candidateName || "Candidate").trim(),
+          overall: safeOverall,
+          presenceScore: safePresence,
+          finalScore: computedFinal,
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true },
+      );
+    } catch (saveError) {
+      console.error("Failed to save interview result:", saveError.message);
+    }
+
+    res.json({
+      ...parsed,
+      finalScore: computedFinal,
+    });
   } catch (error) {
     console.error("Evaluation error:", error);
     res.status(500).json({ error: "Evaluation failed" });
+  }
+});
+
+app.get("/api/leaderboard", async (req, res) => {
+  const topic = (req.query.topic || "").toString().trim();
+  const limit = Math.max(3, Math.min(25, Number(req.query.limit) || 10));
+
+  if (!topic) {
+    return res.status(400).json({ error: "Missing topic query parameter" });
+  }
+
+  try {
+    const escapedTopic = topic.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const topicQuery = new RegExp(`^${escapedTopic}$`, "i");
+
+    const rows = await InterviewResult.find({ topic: topicQuery })
+      .sort({ finalScore: -1, createdAt: 1 })
+      .limit(limit)
+      .select("candidateName topic difficulty overall presenceScore finalScore createdAt")
+      .lean();
+
+    res.json({
+      topic,
+      total: rows.length,
+      leaderboard: rows.map((row, index) => ({
+        rank: index + 1,
+        candidateName: row.candidateName || "Candidate",
+        difficulty: row.difficulty || "Medium",
+        overall: row.overall,
+        presenceScore: row.presenceScore,
+        finalScore: row.finalScore,
+        createdAt: row.createdAt,
+      })),
+    });
+  } catch (error) {
+    console.error("Leaderboard fetch error:", error.message);
+    res.status(500).json({ error: "Failed to load leaderboard" });
   }
 });
 
