@@ -172,6 +172,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         timerRef.current = null;
 
         console.log("⏰ Time's up - Ending interview");
+        persistInterviewContext();
         setInterviewEnded(true);
         stopCamera();
 
@@ -421,6 +422,24 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     // Clamp between 30 and 98
     return Math.max(30, Math.min(98, presenceScore));
   };
+
+  const persistInterviewContext = useCallback(() => {
+    const activeTopic = cleanTopic || customTopic || manualTopic.trim() || "General";
+    const presence = calculateFinalPresenceScore();
+
+    localStorage.setItem("presenceScore", String(presence));
+    localStorage.setItem(
+      "lastInterviewContext",
+      JSON.stringify({
+        sessionId,
+        topic: activeTopic,
+        difficulty: selectedDifficulty || "Medium",
+        duration: selectedDuration,
+        endedAt: new Date().toISOString(),
+      }),
+    );
+  }, [cleanTopic, customTopic, manualTopic, selectedDifficulty, selectedDuration, sessionId, emotionSamples]);
+
   useEffect(() => {
     if (cameraActive && isModelReady) detectEmotions();
   }, [cameraActive, isModelReady, detectEmotions]);
@@ -786,6 +805,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       setMessages((prev) => [...prev, { text: data.reply, isBot: true }]);
 
       if (data.reply.toLowerCase().includes("interview complete") || data.reply.includes("ended")) {
+        persistInterviewContext();
         setInterviewEnded(true);
         stopCamera();
         setTimeout(() => window.location.href = "/congratulations", 1500);
@@ -821,6 +841,17 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     if (!cleanTopic && setupTopic !== customTopic) {
       setCustomTopic(setupTopic);
     }
+
+    localStorage.setItem(
+      "lastInterviewContext",
+      JSON.stringify({
+        sessionId,
+        topic: setupTopic,
+        difficulty: selectedDifficulty,
+        duration: selectedDuration,
+        startedAt: new Date().toISOString(),
+      }),
+    );
 
     setInterviewStarted(true);
     startCamera();
