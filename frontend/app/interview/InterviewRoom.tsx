@@ -120,7 +120,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
   // Emotion & Object detection
   const [isModelReady, setIsModelReady] = useState<boolean>(false);
-  const [emotionSamples, setEmotionSamples] = useState<
+  const emotionSamplesRef = useRef<
     { smile: number; stress: number; conf: number; timestamp: number }[]
   >([]);
   const [showInstructions, setShowInstructions] = useState<boolean>(true);
@@ -134,11 +134,18 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const [showMultiFaceModal, setShowMultiFaceModal] = useState<boolean>(false);
   const [showSuspiciousObjectModal, setShowSuspiciousObjectModal] =
     useState<boolean>(false);
+  const [showTabSwitchModal, setShowTabSwitchModal] = useState<boolean>(false);
   const [suspiciousObjectsList, setSuspiciousObjectsList] = useState<string[]>(
     [],
   );
   const lastObjectAlertTimeRef = useRef<number>(0);
   const OBJECT_ALERT_COOLDOWN_MS = 10000;
+  const FACE_DETECTION_INTERVAL_MS = 450;
+  const OBJECT_DETECTION_INTERVAL_MS = 700;
+  const lastFaceDetectionTimeRef = useRef<number>(0);
+  const lastObjectDetectionTimeRef = useRef<number>(0);
+  const isFaceDetectionRunningRef = useRef(false);
+  const isObjectDetectionRunningRef = useRef(false);
 
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const codeTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -148,17 +155,35 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const recognitionRef = useRef<any>(null);
   const hasEndedRef = useRef(false);
   const timerActiveRef = useRef(false);
+  const cameraActiveRef = useRef(false);
+  const interviewStartedRef = useRef(false);
+  const interviewEndedRef = useRef(false);
+  const isModelReadyRef = useRef(false);
+  const isPausedRef = useRef(false);
 
   const currentTimeRef = useRef<number | null>(null);
 
-  const startInterviewTimer = (seconds: number) => {
-    console.log("[TIMER] Starting with", seconds, "seconds");
+  useEffect(() => {
+    cameraActiveRef.current = cameraActive;
+  }, [cameraActive]);
 
-    setTimeLeft(seconds);
-    currentTimeRef.current = seconds;
-    setIsTimerRunning(true);
-    hasEndedRef.current = false;
+  useEffect(() => {
+    interviewStartedRef.current = interviewStarted;
+  }, [interviewStarted]);
 
+  useEffect(() => {
+    interviewEndedRef.current = interviewEnded;
+  }, [interviewEnded]);
+
+  useEffect(() => {
+    isModelReadyRef.current = isModelReady;
+  }, [isModelReady]);
+
+  useEffect(() => {
+    isPausedRef.current = isPaused;
+  }, [isPaused]);
+
+  const runTimerInterval = () => {
     if (timerRef.current) clearInterval(timerRef.current);
 
     timerRef.current = setInterval(() => {
@@ -183,12 +208,21 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
           { text: "⌛ Time's up! Interview ended automatically.", isBot: true },
         ]);
 
-        // Direct redirect to congratulations page
         setTimeout(() => {
           window.location.href = "/congratulations";
         }, 1500);
       }
     }, 1000);
+  };
+
+  const startInterviewTimer = (seconds: number) => {
+    console.log("[TIMER] Starting with", seconds, "seconds");
+
+    setTimeLeft(seconds);
+    currentTimeRef.current = seconds;
+    setIsTimerRunning(true);
+    hasEndedRef.current = false;
+    runTimerInterval();
   };
   // Stop/pause timer
   const pauseTimer = () => {
@@ -217,8 +251,8 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: "user",
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
+          width: { ideal: 960 },
+          height: { ideal: 540 },
         },
         audio: true,
       });
@@ -266,6 +300,99 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     }
     if (videoRef.current) videoRef.current.srcObject = null;
     setCameraActive(false);
+  };
+
+  const resumeInterviewTimer = () => {
+    if (currentTimeRef.current === null || currentTimeRef.current <= 0) return;
+
+    setIsTimerRunning(true);
+    runTimerInterval();
+  };
+
+  const validateInterviewConditions = useCallback(async () => {
+    if (
+      !videoRef.current ||
+      !cameraActiveRef.current ||
+      interviewEndedRef.current ||
+      !isModelReadyRef.current
+    ) {
+      return { ok: false, message: "Camera is not ready yet." };
+    }
+
+    if (document.visibilityState !== "visible" || !document.hasFocus()) {
+      return {
+        ok: false,
+        message: "Return to the interview tab before resuming.",
+      };
+    }
+
+    const video = videoRef.current;
+    if (video.paused || video.ended || video.videoWidth === 0) {
+      return { ok: false, message: "Camera feed is not ready yet." };
+    }
+
+    try {
+      const detections = await faceapi
+        .detectAllFaces(
+          video,
+          new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }),
+        )
+        .withFaceLandmarks()
+        .withFaceExpressions();
+
+      if (detections.length > 1) {
+        return {
+          ok: false,
+          message: "Multiple faces are still visible. Please leave only one person in frame.",
+        };
+      }
+
+      if (objectDetector) {
+        const results = await objectDetector.detectForVideo(video, performance.now());
+        const suspicious = results.detections.filter((d) => {
+          const label = (d.categories[0]?.categoryName || "").toLowerCase();
+          return (
+            ["cell phone", "mobile phone", "smartphone", "book", "laptop"].includes(label) &&
+            (d.categories[0]?.score ?? 0) > 0.22
+          );
+        });
+
+        if (suspicious.length > 0) {
+          const labels = [...new Set(suspicious.map((d) => d.categories[0]?.categoryName || "unknown"))];
+          setSuspiciousObjectsList(labels);
+          return {
+            ok: false,
+            message: `Please remove: ${labels.join(", ")} from view before resuming.`,
+          };
+        }
+      }
+
+      return { ok: true, message: "" };
+    } catch (error) {
+      console.error("Resume validation failed", error);
+      return {
+        ok: false,
+        message: "Unable to recheck the camera right now. Please try again.",
+      };
+    }
+  }, []);
+
+  const handleFixedIt = async () => {
+    const validation = await validateInterviewConditions();
+
+    if (!validation.ok) {
+      setIsPaused(true);
+      isPausedRef.current = true;
+      setMessages((prev) => [...prev, { text: validation.message, isBot: true }]);
+      return;
+    }
+
+    setShowMultiFaceModal(false);
+    setShowSuspiciousObjectModal(false);
+    setShowTabSwitchModal(false);
+    setIsPaused(false);
+    isPausedRef.current = false;
+    setMessages((prev) => [...prev, { text: "Checks passed. Resuming interview.", isBot: true }]);
   };
 
   const toggleCamera = () => {
@@ -344,19 +471,43 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   // ────────────────────────────────────────────────
   //useCallback is a React Hook used to memoize (remember) a function so that it is not recreated on every render. 🔁
   const detectEmotions = useCallback(async () => {
-    if (!videoRef.current || !cameraActive || interviewEnded || !isModelReady) {
+    if (!videoRef.current || !cameraActiveRef.current || interviewEndedRef.current || !isModelReadyRef.current) {
       requestAnimationFrame(detectEmotions);
       return;
     }
+
+    if (isPausedRef.current) {
+      requestAnimationFrame(detectEmotions);
+      return;
+    }
+
+    const now = performance.now();
+    if (now - lastFaceDetectionTimeRef.current < FACE_DETECTION_INTERVAL_MS) {
+      requestAnimationFrame(detectEmotions);
+      return;
+    }
+
+    if (isFaceDetectionRunningRef.current) {
+      requestAnimationFrame(detectEmotions);
+      return;
+    }
+
+    isFaceDetectionRunningRef.current = true;
+    lastFaceDetectionTimeRef.current = now;
+
     const video = videoRef.current;
     if (video.paused || video.ended || video.videoWidth === 0) {
+      isFaceDetectionRunningRef.current = false;
       requestAnimationFrame(detectEmotions);
       return;
     }
 
     try {
       const detections = await faceapi
-        .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
+        .detectAllFaces(
+          video,
+          new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }),
+        )
         .withFaceLandmarks()
         .withFaceExpressions();
 
@@ -364,7 +515,17 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
       if (detections.length > 1) {
         setIsPaused(true);
+        isPausedRef.current = true;
         setShowMultiFaceModal(true);
+        setShowSuspiciousObjectModal(false);
+        setShowTabSwitchModal(false);
+        setMessages((p) => [
+          ...p,
+          {
+            text: "Multiple faces detected. Please ensure only you are visible before resuming.",
+            isBot: true,
+          },
+        ]);
       } else if (detections.length === 1) {
         const expr = detections[0].expressions;
         const smile = Math.round((expr.happy || 0) * 100);
@@ -380,10 +541,10 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         setStressScore(stress);
         setConfidenceScore(conf);
 
-        setEmotionSamples((prev) => [
-          ...prev,
+        emotionSamplesRef.current = [
+          ...emotionSamplesRef.current.slice(-119),
           { smile, stress, conf, timestamp: Date.now() },
-        ]);
+        ];
       } else {
         setSmileScore(0);
         setStressScore(0);
@@ -391,12 +552,16 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       }
     } catch (err) {
       console.error("Emotion detection error", err);
+    } finally {
+      isFaceDetectionRunningRef.current = false;
     }
 
     requestAnimationFrame(detectEmotions);
-  }, [cameraActive, interviewEnded, isModelReady]);
+  }, []);
 
   const calculateFinalPresenceScore = () => {
+    const emotionSamples = emotionSamplesRef.current;
+
     if (emotionSamples.length === 0) {
       return 65; // Neutral default (not too low)
     }
@@ -440,7 +605,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         endedAt: new Date().toISOString(),
       }),
     );
-  }, [cleanTopic, customTopic, manualTopic, selectedDifficulty, selectedDuration, sessionId, emotionSamples]);
+  }, [cleanTopic, customTopic, manualTopic, selectedDifficulty, selectedDuration, sessionId]);
 
   useEffect(() => {
     if (cameraActive && isModelReady) detectEmotions();
@@ -453,12 +618,31 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     if (
       !videoRef.current ||
       !objectDetector ||
-      !cameraActive ||
-      interviewEnded
+      !cameraActiveRef.current ||
+      interviewEndedRef.current
     ) {
       requestAnimationFrame(detectObjects);
       return;
     }
+
+    if (isPausedRef.current) {
+      requestAnimationFrame(detectObjects);
+      return;
+    }
+
+    const now = performance.now();
+    if (now - lastObjectDetectionTimeRef.current < OBJECT_DETECTION_INTERVAL_MS) {
+      requestAnimationFrame(detectObjects);
+      return;
+    }
+
+    if (isObjectDetectionRunningRef.current) {
+      requestAnimationFrame(detectObjects);
+      return;
+    }
+
+    isObjectDetectionRunningRef.current = true;
+    lastObjectDetectionTimeRef.current = now;
 
     try {
       const results = await objectDetector.detectForVideo(
@@ -478,7 +662,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         );
       });
 
-      if (suspicious.length > 0 && !isPaused) {
+      if (suspicious.length > 0 && !isPausedRef.current) {
         const now = Date.now();
         if (now - lastObjectAlertTimeRef.current > OBJECT_ALERT_COOLDOWN_MS) {
           const labels = [
@@ -489,6 +673,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
           setSuspiciousObjectsList(labels);
           setShowSuspiciousObjectModal(true);
           setIsPaused(true);
+          isPausedRef.current = true;
           setMessages((p) => [
             ...p,
             {
@@ -501,10 +686,12 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       }
     } catch (err) {
       console.error("Object detection error", err);
+    } finally {
+      isObjectDetectionRunningRef.current = false;
     }
 
     requestAnimationFrame(detectObjects);
-  }, [cameraActive, interviewEnded]);
+  }, []);
 
   useEffect(() => {
     if (cameraActive) detectObjects();
@@ -516,10 +703,40 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   useEffect(() => {
     if (isPaused) {
       pauseTimer();
-    } else if (timeLeft != null && timeLeft > 0 && !isTimerRunning) {
-
+    } else if (timeLeft != null && timeLeft > 0 && !isTimerRunning && interviewStartedRef.current && !interviewEndedRef.current) {
+      resumeInterviewTimer();
     }
-  }, [isPaused]);
+  }, [isPaused, isTimerRunning, timeLeft]);
+
+  useEffect(() => {
+    const handleDisturbance = () => {
+      if (!interviewStartedRef.current || interviewEndedRef.current) return;
+      if (isPausedRef.current) return;
+
+      if (document.visibilityState === "hidden" || !document.hasFocus()) {
+        setShowMultiFaceModal(false);
+        setShowSuspiciousObjectModal(false);
+        setShowTabSwitchModal(true);
+        setIsPaused(true);
+        isPausedRef.current = true;
+        setMessages((prev) => [
+          ...prev,
+          {
+            text: "Tab switch or window focus loss detected. Return to the interview tab to continue.",
+            isBot: true,
+          },
+        ]);
+      }
+    };
+
+    window.addEventListener("blur", handleDisturbance);
+    document.addEventListener("visibilitychange", handleDisturbance);
+
+    return () => {
+      window.removeEventListener("blur", handleDisturbance);
+      document.removeEventListener("visibilitychange", handleDisturbance);
+    };
+  }, []);
 
   // ────────────────────────────────────────────────
   //  Initial message when topic is passed via props
@@ -1245,6 +1462,8 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="1">1 minutes</SelectItem>
+                    <SelectItem value="2">2 minutes</SelectItem>
+                    <SelectItem value="5">5 minutes</SelectItem>
                     <SelectItem value="10">10 minutes</SelectItem>
                     <SelectItem value="20">20 minutes</SelectItem>
                     <SelectItem value="30">30 minutes</SelectItem>
@@ -1687,29 +1906,30 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
       {/* Pause modal – same style */}
       {
-        (showMultiFaceModal || showSuspiciousObjectModal) && (
+        (showMultiFaceModal || showSuspiciousObjectModal || showTabSwitchModal) && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 backdrop-blur-sm">
             <Card className="p-10 max-w-lg text-center bg-white/95 dark:bg-slate-900/95 border border-purple-500/30 rounded-3xl shadow-2xl">
               <h2 className="text-3xl font-bold text-red-600 mb-6">
                 {showMultiFaceModal
                   ? "Multiple Faces Detected"
-                  : "Suspicious Object Detected"}
+                  : showSuspiciousObjectModal
+                    ? "Suspicious Object Detected"
+                    : "Window Focus Lost"}
               </h2>
               <p className="text-xl mb-8 leading-relaxed">
                 {showMultiFaceModal
                   ? "Please make sure only you are visible during the interview."
-                  : `Please remove: ${suspiciousObjectsList.join(", ")} from view.`}
+                  : showSuspiciousObjectModal
+                    ? `Please remove: ${suspiciousObjectsList.join(", ")} from view.`
+                    : "Return to the interview tab and keep the page visible while you continue."}
               </p>
               <p className="text-lg text-muted-foreground mb-10">
                 Type <strong>"yes"</strong> or <strong>"ok"</strong> to resume
               </p>
               <Button
                 size="lg"
-                onClick={() => {
-                  setIsPaused(false);
-                  setShowMultiFaceModal(false);
-                  setShowSuspiciousObjectModal(false);
-                }}
+                type="button"
+                onClick={handleFixedIt}
                 className="px-12 py-7 text-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
               >
                 I've Fixed It
