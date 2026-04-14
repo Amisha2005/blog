@@ -2,7 +2,7 @@
 const express = require("express");
 const { Groq } = require("groq-sdk");
 const app = express();
-const PORT = 5000;
+const PORT = Number(process.env.PORT) || 5000;
 const connectDb = require("./utils/db");
 const seedLocalUsersIfNeeded = require("./utils/seedUsers");
 require("dotenv").config();
@@ -11,8 +11,14 @@ const authRoute = require("./Router/auth-router");
 const adminRoutes = require("./Router/admin");// In-memory store (restart server → loses history → ok for dev)
 const topicRoutes = require("./Router/topicRoutes");
 const InterviewResult = require("./model/interviewResult");
+
+const corsOrigins = (process.env.CORS_ORIGINS || "http://localhost:3000")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
 const corsOptions = {
-  origin: ["http://localhost:3000","https://nova-tech-rose.vercel.app"],
+  origin: corsOrigins,
   methods: "GET,POST,PUT,DELETE,PATCH,HEAD",
   credentials: true,
 };
@@ -534,7 +540,7 @@ connectDb()
   .then(async () => {
     await seedLocalUsersIfNeeded();
     app.listen(PORT, () => {
-      console.log(`Server running on http://localhost:${PORT}`);
+      console.log(`Server running on port ${PORT}`);
     });
   })
   .catch((error) => {
