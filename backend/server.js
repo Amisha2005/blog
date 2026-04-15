@@ -11,7 +11,7 @@ const authRoute = require("./Router/auth-router");
 const adminRoutes = require("./Router/admin");// In-memory store (restart server → loses history → ok for dev)
 const topicRoutes = require("./Router/topicRoutes");
 const corsOptions = {
-  origin: ["http://localhost:3000", "https://nova-tech-rose.vercel.app"],
+  origin: ["http://localhost:3000", "blog-bice-nine-cgb1wvb8h2.vercel.app"],
   methods: "GET,POST,PUT,DELETE,PATCH,HEAD",
   credentials: true,
 };
