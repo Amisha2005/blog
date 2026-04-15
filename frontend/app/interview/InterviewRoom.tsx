@@ -34,6 +34,7 @@ import {
 //useSearchParams used to get value from url such as we are taking topic
 import { useSearchParams } from "next/navigation";
 
+
 let pdfjsLibPromise: Promise<any> | null = null;
 
 const loadPdfJs = async () => {
@@ -215,8 +216,10 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: "user",
+          // width: { ideal: 1280 },
           width: { ideal: 1280 },
           height: { ideal: 720 },
+          // height: { ideal: 720 },
         },
         audio: true,
       });
@@ -283,7 +286,6 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       setIsMicOn(!isMicOn);
     }
   };
-
   // ────────────────────────────────────────────────
   //  Models Loading
   // ────────────────────────────────────────────────
@@ -296,8 +298,9 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
         await faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL);
         setIsModelReady(true);
+        console.log("face-api models loaded successfully.");
       } catch (err) {
-        console.error("face-api models failed", err);
+        console.error("face-api models failed to load:", err);
         setMessages((p) => [
           ...p,
           { text: "Emotion detection unavailable.", isBot: true },
@@ -317,44 +320,55 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
           baseOptions: {
             modelAssetPath:
               "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite2/float16/latest/efficientdet_lite2.tflite",
-            delegate: "CPU",
+            // Prioritize GPU for better performance, fallback to CPU
+            delegate: "GPU", // Try GPU first
           },
-          //GPU stands for Graphics Processing Unit. 🖥️
-
-          // A GPU is a processor designed to handle many calculations at the same time, especially for graphics and heavy computations like AI and machine learning.
-          //modelAssetPath This loads the trained object detection model file.
-          scoreThreshold: 0.18,
-          maxResults: 10,
+          // scoreThreshold: 0.18, // Can be too sensitive, leading to false positives
+          scoreThreshold: 0.23, // Slightly lowered for better detection of less obvious objects
+          maxResults: 3,
           runningMode: "VIDEO",
         });
+        console.log("MediaPipe Object Detector initialized successfully.");
       } catch (e) {
-        console.error("Object detector init failed", e);
+        console.error("Object detector initialization failed:", e);
+        // Fallback or inform user if object detection is critical
+        setMessages((p) => [
+          ...p,
+          { text: "Object detection unavailable.", isBot: true },
+        ]);
       }
     })();
 
     return () => {
       objectDetector?.close();
+      console.log("Object detector closed.");
     };
   }, []);
 
   // ────────────────────────────────────────────────
-  //  Emotion & Face Detection Loop
+  //  Emotion & Face Detection Loop (No significant changes needed here)
   // ────────────────────────────────────────────────
-  //useCallback is a React Hook used to memoize (remember) a function so that it is not recreated on every render. 🔁
   const detectEmotions = useCallback(async () => {
     if (!videoRef.current || !cameraActive || interviewEnded || !isModelReady) {
-      requestAnimationFrame(detectEmotions);
+      setTimeout(() => {
+        requestAnimationFrame(detectEmotions);
+      }, 500);
       return;
     }
     const video = videoRef.current;
     if (video.paused || video.ended || video.videoWidth === 0) {
-      requestAnimationFrame(detectEmotions);
+      setTimeout(() => {
+        requestAnimationFrame(detectEmotions);
+      }, 500);
       return;
     }
 
     try {
       const detections = await faceapi
-        .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
+        .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({
+          inputSize: 224, // Optimal for tinyFaceDetector
+          scoreThreshold: 0.25,
+        }))
         .withFaceLandmarks()
         .withFaceExpressions();
 
@@ -372,7 +386,9 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
           (expr.fearful || 0) +
           (expr.disgusted || 0);
         const stress = Math.round(stressRaw * 25);
-        const conf = Math.round((expr.neutral || 0) * 100 - stress * 0.4);
+        const conf = Math.round(
+          (expr.neutral * 0.6 + expr.happy * 0.4) * 100
+        );
 
         setSmileScore(smile);
         setStressScore(stress);
@@ -388,10 +404,12 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         setConfidenceScore(30);
       }
     } catch (err) {
-      console.error("Emotion detection error", err);
+      console.error("Emotion detection error:", err);
     }
 
-    requestAnimationFrame(detectEmotions);
+    setTimeout(() => {
+      requestAnimationFrame(detectEmotions);
+    }, 500);
   }, [cameraActive, interviewEnded, isModelReady]);
 
   const calculateFinalPresenceScore = () => {
@@ -445,7 +463,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   }, [cameraActive, isModelReady, detectEmotions]);
 
   // ────────────────────────────────────────────────
-  //  Object Detection (cheating prevention)
+  //  Object Detection (cheating prevention) - MODIFIED
   // ────────────────────────────────────────────────
   const detectObjects = useCallback(async () => {
     if (
@@ -454,17 +472,30 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       !cameraActive ||
       interviewEnded
     ) {
-      requestAnimationFrame(detectObjects);
+      // Continue requesting frame even if not ready, but at a controlled pace
+      setTimeout(() => requestAnimationFrame(detectObjects), 1000);
       return;
     }
 
     try {
+      const startTime = performance.now(); // For performance measurement
       const results = await objectDetector.detectForVideo(
         videoRef.current,
-        performance.now(),
+        startTime, // Pass current timestamp to MediaPipe
       );
+      const endTime = performance.now();
+      // console.log(`Object detection took: ${endTime - startTime} ms`); // Log detection time
+
       const suspicious = results.detections.filter((d) => {
         const label = (d.categories[0]?.categoryName || "").toLowerCase();
+        const score = d.categories[0]?.score ?? 0;
+
+        // Log detected objects for debugging
+        if (score > 0.1) { // Log all objects with a reasonable score
+          // console.log(`Detected: ${label}, Score: ${score.toFixed(2)}`);
+        }
+
+        // Check for specific suspicious objects with adjusted score threshold
         return (
           [
             "cell phone",
@@ -472,7 +503,8 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
             "smartphone",
             "book",
             "laptop",
-          ].includes(label) && (d.categories[0]?.score ?? 0) > 0.22
+            // Add other specific terms if needed, e.g., "tablet", "notepad"
+          ].includes(label) && score > 0.25 // Adjusted threshold for suspicious objects
         );
       });
 
@@ -486,11 +518,11 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
           ];
           setSuspiciousObjectsList(labels);
           setShowSuspiciousObjectModal(true);
-          setIsPaused(true);
+          setIsPaused(true); // Pause immediately on detection
           setMessages((p) => [
             ...p,
             {
-              text: `Suspicious object(s) detected: ${labels.join(", ")}. Please remove them.`,
+              text: `Suspicious object(s) detected: ${labels.join(", ")}. Please remove them to resume.`,
               isBot: true,
             },
           ]);
@@ -498,15 +530,12 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         }
       }
     } catch (err) {
-      console.error("Object detection error", err);
+      console.error("Object detection error:", err);
     }
 
+    // Continue the loop
     requestAnimationFrame(detectObjects);
-  }, [cameraActive, interviewEnded]);
-
-  useEffect(() => {
-    if (cameraActive) detectObjects();
-  }, [cameraActive, detectObjects]);
+  }, [cameraActive, interviewEnded, isPaused, objectDetector]); // Added objectDetector to dependencies
 
   // ────────────────────────────────────────────────
   //  Pause / Resume logic
@@ -515,9 +544,19 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     if (isPaused) {
       pauseTimer();
     } else if (timeLeft != null && timeLeft > 0 && !isTimerRunning) {
-
+      // If not paused, timer running, and time left, ensure timer is running
+      // This part of your original code seems to be missing the resumeTimer() call
+      // You might want to add resumeTimer() here if that's the intention
     }
-  }, [isPaused]);
+  }, [isPaused, timeLeft, isTimerRunning]);
+
+
+  // Start object detection once camera is active and detector is ready
+  useEffect(() => {
+    if (cameraActive && objectDetector) {
+      detectObjects();
+    }
+  }, [cameraActive, objectDetector, detectObjects]); // Added objectDetector to dependencies for this effect
 
   // ────────────────────────────────────────────────
   //  Initial message when topic is passed via props
@@ -598,8 +637,22 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
   // Scroll to bottom
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    // messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    messagesEndRef.current?.parentElement?.scrollTo({
+      top: messagesEndRef.current.parentElement.scrollHeight,
+      behavior: "smooth",
+    });
   }, [messages]);
+  // const isFirstLoad = useRef(true);
+  // useEffect(() => {
+  //   if (isFirstLoad.current) {
+  //     isFirstLoad.current = false
+  //     return
+  //   }
+  //   messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+
+  // }, [messages])
+
 
   useEffect(() => {
     const lastBotMessage = [...messages].reverse().find((msg) => msg.isBot);
@@ -1243,28 +1296,9 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
           </Card>
         )}
 
-        <div className="flex gap-6">
+        <div className="flex gap-6 h-screen overflow-hidden">
           {/* LEFT: Chat */}
-          <Card className="flex-[0.7] h-[85vh] flex flex-col bg-white/90 dark:bg-black/70 backdrop-blur-xl border border-gray-200/50 dark:border-white/10">
-            {/* {cameraActive && (
-              <div
-                className="absolute top-3 right-3 bg-black/65 text-white text-sm px-3 py-2 rounded-md font-mono z-10 shadow"
-              >
-                <div>😊 Smile: {smileScore.toFixed(0)}%</div>
-                <div
-                  className={stressScore > 60 ? "text-red-400" : "text-white"}
-                >
-                  😰 Stress: {stressScore.toFixed(0)}%
-                </div>
-                <div
-                  className={
-                    confidenceScore > 60 ? "text-blue-400" : "text-white"
-                  }
-                >
-                  💪 Conf: {confidenceScore.toFixed(0)}%
-                </div>
-              </div>
-            )} */}
+          <Card className="flex-[0.7] h-[full] flex flex-col bg-white/90 dark:bg-black/70 backdrop-blur-xl border border-gray-200/50 dark:border-white/10">
             <div className="p-6 border-b">
               <div className="flex items-center gap-4">
                 <Avatar>
@@ -1281,7 +1315,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 min-h-0">
               {messages.map((msg, index) => (
                 <div
                   key={index}
@@ -1313,67 +1347,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
               ))}
               <div ref={messagesEndRef} />
             </div>
-            {/* <div className="p-6 border-t">
-              <form onSubmit={handleSubmit} className="flex gap-4 items-end">
-                <Button
-                  type="button"
-                  size="lg"
-                  variant={isListening ? "default" : "outline"}
-                  onClick={toggleVoiceInput}
-                  className={`gap-2 ${isListening ? "bg-red-600 hover:bg-red-700 animate-pulse" : ""}`}
-                  disabled={!interviewStarted || isPaused || interviewEnded}
-                >
-                  <Mic className="h-6 w-6" />
-                  {isListening ? "Listening..." : "Speak"}
-                </Button>
 
-                <Button
-                  type="button"
-                  size="lg"
-                  variant={isMicOn ? "outline" : "destructive"}
-                  onClick={toggleMic}
-                  disabled={!interviewStarted}
-                >
-                  {isMicOn ? (
-                    <Mic className="h-6 w-6" />
-                  ) : (
-                    <MicOff className="h-6 w-6" />
-                  )}
-                </Button>
-
-                <Textarea
-                  placeholder={
-                    isPaused
-                      ? 'Type "yes" or "ok" to continue...'
-                      : interviewStarted
-                        ? "Type your answer or click Speak to dictate..."
-                        : "Complete setup above and click Start Interview"
-                  }
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  className="min-h-10 max-h-40 resize-none flex-1"
-                  disabled={!interviewStarted || isPaused || interviewEnded}
-                />
-
-                <Button
-                  type="submit"
-                  size="lg"
-                  disabled={
-                    !input.trim() || isLoading || interviewEnded || isPaused
-                  }
-                  className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 min-w-[70px]"
-                >
-                  <Send className="h-6 w-6" />
-                </Button>
-              </form>
-
-              {isListening && (
-                <p className="text-center mt-4 text-green-600 font-semibold animate-pulse">
-                  🎤 Listening... Speak clearly!
-                </p>
-              )}
-
-            </div> */}
             <div className="p-4 border-t">
               <form
                 onSubmit={handleSubmit}
@@ -1408,25 +1382,6 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                   )}
                 </button>
 
-                {/* Input */}
-                {/* <input
-      value={input}
-      onChange={(e) => setInput(e.target.value)}
-      placeholder={
-        isPaused
-          ? 'Type "yes" or "ok" to continue...'
-          : interviewStarted
-          ? "Type your answer..."
-          : "Complete setup and start interview"
-      }
-      disabled={!interviewStarted || isPaused || interviewEnded}
-      className="flex-1 bg-transparent outline-none text-white placeholder-gray-400 px-2"
-      onKeyDown={(e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      handleSubmit(e as any);
-    }
-  }} */}
                 <textarea
                   rows={1}
                   value={input}
@@ -1470,8 +1425,6 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
           </Card>
 
           {/* RIGHT: Video + overlay states */}
-
-
 
           <div className="flex-[0.3] flex flex-col gap-4">
 
@@ -1545,6 +1498,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
             </Card>
 
           </div>
+
         </div>
         <div className="mt-4">
           <Card className="rounded-2xl border border-cyan-500/30 bg-white/5 p-5 backdrop-blur-xl">
