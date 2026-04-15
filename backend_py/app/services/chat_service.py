@@ -1,34 +1,3 @@
-# from datetime import datetime
-# from groq import Groq
-# import os
-# from dotenv import load_dotenv
-
-
-# load_dotenv()
-# # print(os.getenv("GROQ_API_KEY"))
-# client=Groq(api_key=os.getenv("GROQ_API_KEY"))
-
-# conversation_history = {}
-
-# async def handle_chat(req):
-#     user_message = req.chat.strip()
-
-#     response = client.chat.completions.create(
-        
-#         messages=[
-#             {"role": "system", "content": f"You are a technical interviewer. Ask one question at a time. Evaluate answers briefly. Ask {req.topic} questions with {req.difficulty} difficulty."},
-#             {
-#                 "role": "user",
-#                 "content": user_message
-#             }
-#         ],
-#         model="llama-3.3-70b-versatile"
-        
-        
-#     )
-#     reply=response.choices[0].message.content
-#     return {"reply": reply}
-
 
 from datetime import datetime
 from groq import Groq

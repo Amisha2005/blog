@@ -31,6 +31,7 @@ const groq = new Groq({
 });
 
 
+const API_BASE_URL_PY = process.env.API_BASE_URL_PY || "http://localhost:8000";
 
 
 
@@ -50,7 +51,7 @@ app.post("/api/chat", async (req, res) => {
   if (!topic?.trim()) return res.json({ reply: "Error: No interview topic selected." });
   try {
     // 🔥 Send request to Python backend
-    const response = await axios.post("http://localhost:8000/api/chat", {
+    const response = await axios.post(API_BASE_URL_PY + "/api/chat", {
       chat:userMessage,
       topic,
       difficulty,
@@ -186,7 +187,7 @@ app.post("/api/evaluate", async (req, res) => {
   if (!sessionId) return res.status(400).json({ error: "Missing sessionId" });
 
   try {
-    const response = await axios.post("http://localhost:8000/api/evaluate", {
+    const response = await axios.post(API_BASE_URL_PY + "/api/evaluate", {
       sessionId,
       topic,
       difficulty,
