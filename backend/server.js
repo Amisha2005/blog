@@ -23,6 +23,18 @@ app.use(cors(corsOptions));
 
 
 app.use(express.json());
+
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "https://blog-bice-nine-cgb1wvb8h2.vercel.app");
+  res.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,PATCH,HEAD");
+  res.header("Access-Control-Allow-Headers", "Content-Type,Authorization");
+  res.header("Access-Control-Allow-Credentials", true);
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 app.use("/api/auth", authRoute);
 app.use("/api/admin", adminRoutes);
 app.use("/api", topicRoutes);   // or app.use("/api", topicRoutes);
@@ -52,7 +64,7 @@ app.post("/api/chat", async (req, res) => {
   try {
     // 🔥 Send request to Python backend
     const response = await axios.post(API_BASE_URL_PY + "/api/chat", {
-      chat:userMessage,
+      chat: userMessage,
       topic,
       difficulty,
       sessionId,
@@ -374,7 +386,7 @@ connectDb()
     // app.listen(PORT, () => {
     //   console.log(`Server running on http://localhost:${PORT}`);
     // });
-    
+
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`Server running on port ${PORT}`);
     });
