@@ -12,7 +12,7 @@ const adminRoutes = require("./Router/admin");// In-memory store (restart server
 const topicRoutes = require("./Router/topicRoutes");
 const corsOptions = {
   origin: ["http://localhost:3000", "https://blog-bice-nine-cgb1wvb8h2.vercel.app"],
-  methods: "GET,POST,PUT,DELETE,PATCH,HEAD",
+  methods: ["GET,POST,PUT,DELETE,PATCH,HEAD"],
   credentials: true,
 };
 const axios = require("axios");
