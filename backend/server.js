@@ -18,7 +18,7 @@ const corsOptions = {
 const axios = require("axios");
 
 app.use(cors(corsOptions));
-app.options("*", cors(corsOptions)); // Handle preflight requests
+// app.options("*", cors(corsOptions)); // Handle preflight requests
 
 
 
