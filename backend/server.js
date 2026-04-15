@@ -5,7 +5,7 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const connectDb = require("./utils/db");
 const seedLocalUsersIfNeeded = require("./utils/seedUsers");
-require("dotenv").config();
+// require("dotenv").config();
 const cors = require("cors");
 const authRoute = require("./Router/auth-router");
 const adminRoutes = require("./Router/admin");// In-memory store (restart server → loses history → ok for dev)
