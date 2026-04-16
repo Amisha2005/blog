@@ -4,7 +4,7 @@ const { Groq } = require("groq-sdk");
 const app = express();
 const PORT = Number(process.env.PORT) || 5000;
 const connectDb = require("./utils/db");
-const seedLocalUsersIfNeeded = require("./utils/seedUsers");
+const seedUsersIfNeeded = require("./utils/seedUsers");
 require("dotenv").config();
 const cors = require("cors");
 const authRoute = require("./Router/auth-router");
@@ -538,7 +538,7 @@ Rules:
 
 connectDb()
   .then(async () => {
-    await seedLocalUsersIfNeeded();
+    await seedUsersIfNeeded();
     app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
     });

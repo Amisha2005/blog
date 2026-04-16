@@ -80,34 +80,6 @@ const seedTopics = [
   },
 ];
 
-const getSelectedDbUri = () => {
-  if (process.env.MONGODB_URI) {
-    return process.env.MONGODB_URI;
-  }
-
-  const isProduction = process.env.NODE_ENV === "production";
-
-  if (isProduction && process.env.MONGODB_URI_LIVE) {
-    return process.env.MONGODB_URI_LIVE;
-  }
-
-  if (!isProduction && process.env.MONGODB_URI_LOCAL) {
-    return process.env.MONGODB_URI_LOCAL;
-  }
-
-  return process.env.MONGODB_URI_LOCAL || process.env.MONGODB_URI_LIVE || "";
-};
-
-const isLocalMongoUri = (uri) => {
-  if (!uri) return false;
-  const normalized = String(uri).toLowerCase();
-  return (
-    normalized.includes("127.0.0.1") ||
-    normalized.includes("localhost") ||
-    normalized.includes("mongodb://mongo")
-  );
-};
-
 const seedDemoTopicsIfNeeded = async () => {
   try {
     for (const topic of seedTopics) {
@@ -130,24 +102,16 @@ const seedDemoTopicsIfNeeded = async () => {
   }
 };
 
-const seedLocalUsersIfNeeded = async () => {
-  const isProduction = process.env.NODE_ENV === "production";
+const seedUsersIfNeeded = async () => {
+  const shouldSeedOnStartup = process.env.SEED_ON_STARTUP !== "false";
 
-  if (isProduction) {
-    console.log("[seed] Skipped user seeding in production mode.");
-    return;
-  }
-
-  const selectedUri = getSelectedDbUri();
-  if (!isLocalMongoUri(selectedUri)) {
-    console.log("[seed] Skipped data seeding because selected DB URI is not local.");
+  if (!shouldSeedOnStartup) {
+    console.log("[seed] Skipped startup seeding because SEED_ON_STARTUP=false.");
     return;
   }
 
   // Ensure collections + indexes for all seeded models.
   await Promise.all([User.init(), InterviewTopic.init(), InterviewResult.init()]);
-
-  const seededEmails = seedUsers.map((user) => user.email);
 
   const saltRound = 10;
   const usersToUpsert = await Promise.all(
@@ -177,7 +141,7 @@ const seedLocalUsersIfNeeded = async () => {
   // Seed demo interview topics
   await seedDemoTopicsIfNeeded();
 
-  console.log("[seed] Ensured local seed data for required users, topics, and initialized result collection.");
+  console.log("[seed] Ensured startup seed data for required users, topics, and initialized result collection.");
 };
 
-module.exports = seedLocalUsersIfNeeded;
+module.exports = seedUsersIfNeeded;

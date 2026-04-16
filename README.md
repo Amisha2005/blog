@@ -47,7 +47,8 @@ Set values in `backend/.env`:
 
 Notes:
 - `MONGODB_URI` (if set) overrides local/live selection.
-- Local seeding runs only for local DB URIs and skips non-local URIs.
+- Startup seeding runs in both development and production by default.
+- Set `SEED_ON_STARTUP=false` when you want to skip startup seeding.
 
 ### Frontend env
 
@@ -115,27 +116,55 @@ cd frontend
 npm run lint
 ```
 
-## 8. Local Seed Behavior
+## 8. Seed Behavior
 
-When backend starts in development mode:
-- It can seed default users (3 admins + 3 users).
-- Seeding is skipped in production.
-- Seeding is also skipped if DB URI does not appear local.
+On backend startup:
+- Default users and demo topics are upserted (idempotent) in both development and production.
+- Set `SEED_ON_STARTUP=false` to disable seeding.
 
-## 9. Deployment Essentials
+## 9. Deploy On Render (Backend)
 
-### Backend deploy
-Required envs:
+1. Push this repo to GitHub.
+2. In Render, click **New +** -> **Web Service**.
+3. Connect your repo.
+4. Configure service:
+	- Root Directory: `backend`
+	- Build Command: `npm install`
+	- Start Command: `npm start`
+	- Environment: `Node`
+5. Add environment variables in Render:
+	- `NODE_ENV=production`
+	- `MONGODB_URI_LIVE=<your-mongodb-atlas-uri>` (or set `MONGODB_URI`)
+	- `JWT_SECRET_KEY=<strong-secret>`
+	- `GROQ_API_KEY=<your-groq-key>`
+	- `CORS_ORIGINS=<your-vercel-frontend-url>`
+	- `SEED_ON_STARTUP=true` (optional, default is enabled)
+6. Deploy and copy the generated Render backend URL, for example: `https://your-api.onrender.com`
+
+## 10. Deploy On Vercel (Frontend)
+
+1. Import the same repo in Vercel.
+2. Set project Root Directory to `frontend`.
+3. Keep framework as Next.js (auto-detected).
+4. Add environment variable:
+	- `NEXT_PUBLIC_API_BASE_URL=https://your-api.onrender.com`
+5. Deploy and open your Vercel URL.
+6. Go back to Render and ensure `CORS_ORIGINS` includes this exact Vercel domain.
+
+## 11. Deployment Essentials
+
+### Backend env (Render)
 - `NODE_ENV=production`
-- `MONGODB_URI_LIVE` (or `MONGODB_URI`)
+- `MONGODB_URI_LIVE` or `MONGODB_URI`
 - `JWT_SECRET_KEY`
 - `GROQ_API_KEY`
+- `CORS_ORIGINS`
+- `SEED_ON_STARTUP` (optional)
 
-### Frontend deploy
-Required env:
-- `NEXT_PUBLIC_API_BASE_URL=<deployed-backend-url>`
+### Frontend env (Vercel)
+- `NEXT_PUBLIC_API_BASE_URL=<render-backend-url>`
 
-## 10. Troubleshooting
+## 12. Troubleshooting
 
 ### AI endpoints failing
 - Verify backend `GROQ_API_KEY` is valid and present.
@@ -156,7 +185,7 @@ cd frontend
 npm i baseline-browser-mapping@latest -D
 ```
 
-## 11. Security Notes
+## 13. Security Notes
 
 - Never commit real `.env` files.
 - Rotate secrets immediately if exposed.
