@@ -73,6 +73,7 @@ const normalizeInterviewTopic = (rawTopic: string) => {
 };
 
 export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
+  const [isLaptopDevice, setIsLaptopDevice] = useState<boolean | null>(null);
   const searchParams = useSearchParams();
   const difficultyParam = searchParams.get("difficulty");
   const durationParam = searchParams.get("duration");
@@ -105,6 +106,19 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const [showDuration, setShowDuration] = useState<boolean>(false);
   const [selectedDuration, setSelectedDuration] = useState<number | null>(null); // minutes
   const [manualTopic, setManualTopic] = useState("");
+
+  useEffect(() => {
+    const evaluateDevice = () => {
+      const isSmallScreen = window.matchMedia("(max-width: 1023px)").matches;
+      const hasCoarsePointer = window.matchMedia("(pointer: coarse)").matches;
+      setIsLaptopDevice(!(isSmallScreen || hasCoarsePointer));
+    };
+
+    evaluateDevice();
+    window.addEventListener("resize", evaluateDevice);
+
+    return () => window.removeEventListener("resize", evaluateDevice);
+  }, []);
 
   // Camera & Media states
   const [cameraActive, setCameraActive] = useState<boolean>(false);
@@ -1365,6 +1379,30 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const [showCode, setShowCode] = useState(false)
   const activeTopicHeading = cleanTopic || customTopic || manualTopic.trim() || "Interview";
   const activeDifficultyHeading = selectedDifficulty || "Medium";
+
+  if (isLaptopDevice === null) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-purple-50 dark:from-slate-950 dark:to-purple-950/40 flex items-center justify-center px-4">
+        <p className="text-muted-foreground">Checking device compatibility...</p>
+      </div>
+    );
+  }
+
+  if (isLaptopDevice === false) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-purple-50 dark:from-slate-950 dark:to-purple-950/40 flex items-center justify-center px-4">
+        <Card className="max-w-xl rounded-3xl border border-red-200/60 bg-white/95 p-8 text-center shadow-2xl dark:border-red-500/20 dark:bg-black/80 md:p-10">
+          <h1 className="text-3xl font-bold text-red-600 dark:text-red-400">Laptop Required</h1>
+          <p className="mt-4 text-base leading-7 text-muted-foreground">
+            The interview can only be conducted on laptops or desktops. Please reopen this website on a laptop to continue.
+          </p>
+          <p className="mt-3 text-sm text-muted-foreground">
+            Mobile devices are not supported for the live interview, timer, camera, and proctoring flow.
+          </p>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-purple-50 dark:from-slate-950 dark:to-purple-950/40">
