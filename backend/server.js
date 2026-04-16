@@ -307,12 +307,42 @@ ${avoidLines}`,
 
 // ── Evaluation Endpoint ────────────────────────────────────────
 app.post("/api/evaluate", async (req, res) => {
-  const { sessionId, topic, difficulty, presenceScore, candidateName } = req.body;
+  const { sessionId, topic, difficulty, presenceScore, candidateName, proctoring } = req.body;
 
   if (!sessionId) return res.status(400).json({ error: "Missing sessionId" });
 
   const history = conversationHistory.get(sessionId) || [];
+
+  const persistResult = async (overall, safePresenceOverride) => {
+    const safeOverallValue = Math.max(0, Math.min(100, Number(overall) || 0));
+    const safePresenceValue = Number.isFinite(Number(safePresenceOverride))
+      ? Math.max(0, Math.min(100, Number(safePresenceOverride)))
+      : 65;
+    const finalScoreValue = Math.round(safePresenceValue * 0.4 + safeOverallValue * 0.6);
+
+    try {
+      await InterviewResult.findOneAndUpdate(
+        { sessionId },
+        {
+          sessionId,
+          topic: (topic || "General").trim(),
+          difficulty: difficulty || "Medium",
+          candidateName: (candidateName || "Candidate").trim(),
+          overall: safeOverallValue,
+          presenceScore: safePresenceValue,
+          finalScore: finalScoreValue,
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true },
+      );
+    } catch (saveError) {
+      console.error("Failed to save interview result:", saveError.message);
+    }
+
+    return { safeOverallValue, safePresenceValue, finalScoreValue };
+  };
+
   if (history.length < 2) { // at least a few Q&A pairs
+    const persisted = await persistResult(0, Math.min(Number(presenceScore) || 65, 25));
     return res.json({
       overall: 0,
       technical_accuracy: 0,
@@ -321,6 +351,37 @@ app.post("/api/evaluate", async (req, res) => {
       strengths: [],
       weaknesses: [],
       feedback: "Not enough content to evaluate properly.",
+      finalScore: persisted.finalScoreValue,
+    });
+  }
+
+  const controlInputPattern = /^(start|next|continue|skip|stop|done|yes|ok)$/i;
+  const userMessages = history
+    .filter((m) => m.role === "user")
+    .map((m) => String(m.content || "").trim())
+    .filter(Boolean);
+
+  const substantiveAnswers = userMessages.filter((content) => {
+    if (controlInputPattern.test(content.toLowerCase())) return false;
+    if (content.length < 4) return false;
+    return true;
+  });
+
+  const substantiveWordCount = substantiveAnswers.reduce((sum, content) => {
+    return sum + content.split(/\s+/).filter(Boolean).length;
+  }, 0);
+
+  if (substantiveAnswers.length === 0 || substantiveWordCount < 12) {
+    const persisted = await persistResult(0, Math.min(Number(presenceScore) || 65, 20));
+    return res.json({
+      overall: 0,
+      technical_accuracy: 0,
+      communication: 0,
+      problem_solving: 0,
+      strengths: [],
+      weaknesses: ["No meaningful answers were provided by the candidate."],
+      feedback: "The interview could not be positively evaluated because meaningful technical answers were not provided.",
+      finalScore: persisted.finalScoreValue,
     });
   }
 
@@ -382,12 +443,29 @@ Return **valid JSON only**, no markdown, no extra text:
     // Optional: clean session after evaluation
     // conversationHistory.delete(sessionId);
 
-    const safeOverall = Number.isFinite(Number(parsed?.overall))
+    let safeOverall = Number.isFinite(Number(parsed?.overall))
       ? Math.max(0, Math.min(100, Number(parsed.overall)))
       : 0;
-    const safePresence = Number.isFinite(Number(presenceScore))
+    let safePresence = Number.isFinite(Number(presenceScore))
       ? Math.max(0, Math.min(100, Number(presenceScore)))
       : 65;
+
+    const suspiciousObjectCount = Math.max(0, Number(proctoring?.suspiciousObject) || 0);
+    const multiFaceCount = Math.max(0, Number(proctoring?.multiFace) || 0);
+    const totalIncidents = suspiciousObjectCount + multiFaceCount;
+
+    if (totalIncidents > 0) {
+      const incidentPenalty = Math.min(40, totalIncidents * 8 + suspiciousObjectCount * 4);
+      safeOverall = Math.max(0, safeOverall - incidentPenalty);
+      safePresence = Math.max(0, safePresence - Math.min(30, totalIncidents * 5));
+
+      const priorWeaknesses = Array.isArray(parsed?.weaknesses) ? parsed.weaknesses : [];
+      parsed.weaknesses = [
+        ...priorWeaknesses,
+        `Proctoring incidents detected (objects: ${suspiciousObjectCount}, multi-face: ${multiFaceCount}).`,
+      ];
+    }
+
     const computedFinal = Math.round(safePresence * 0.4 + safeOverall * 0.6);
 
     try {

@@ -60,12 +60,24 @@ interface InterviewRoomProps {
 
 let objectDetector: ObjectDetector | null = null;
 
+const normalizeInterviewTopic = (rawTopic: string) => {
+  const decoded = decodeURIComponent(rawTopic || "").replace(/\s+/g, " ").trim();
+  if (!decoded) return "";
+
+  const masteringMatch = decoded.match(/^mastering\s+(.+?)\s+in\s+\d{4}$/i);
+  if (masteringMatch?.[1]) {
+    return masteringMatch[1].trim();
+  }
+
+  return decoded;
+};
+
 export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const searchParams = useSearchParams();
   const difficultyParam = searchParams.get("difficulty");
   const durationParam = searchParams.get("duration");
   const autoStartParam = searchParams.get("autostart");
-  const cleanTopic = selectedTopic ? decodeURIComponent(selectedTopic) : null;
+  const cleanTopic = selectedTopic ? normalizeInterviewTopic(selectedTopic) : null;
   const [autoStartRequested, setAutoStartRequested] = useState(false);
   const [skipSetupScreen, setSkipSetupScreen] = useState(false);
   // New state
@@ -139,9 +151,16 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     [],
   );
   const lastObjectAlertTimeRef = useRef<number>(0);
+  const suspiciousFrameStreakRef = useRef<number>(0);
   const OBJECT_ALERT_COOLDOWN_MS = 10000;
   const FACE_DETECTION_INTERVAL_MS = 450;
   const OBJECT_DETECTION_INTERVAL_MS = 700;
+  const OBJECT_SUSPICIOUS_MIN_SCORE = 0.5;
+  const OBJECT_SUSPICIOUS_MIN_AREA_RATIO = 0.04;
+  const OBJECT_LAPTOP_MIN_SCORE = 0.72;
+  const OBJECT_LAPTOP_MIN_AREA_RATIO = 0.1;
+  const OBJECT_USER_LAPTOP_BOTTOM_ZONE = 0.7;
+  const OBJECT_SUSPICIOUS_CONSECUTIVE_FRAMES = 3;
   const lastFaceDetectionTimeRef = useRef<number>(0);
   const lastObjectDetectionTimeRef = useRef<number>(0);
   const isFaceDetectionRunningRef = useRef(false);
@@ -160,6 +179,8 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const interviewEndedRef = useRef(false);
   const isModelReadyRef = useRef(false);
   const isPausedRef = useRef(false);
+  const proctoringIncidentRef = useRef({ multiFace: 0, suspiciousObject: 0 });
+  const lastInterviewQuestionRef = useRef<string>("");
 
   const currentTimeRef = useRef<number | null>(null);
 
@@ -309,6 +330,63 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     runTimerInterval();
   };
 
+  const getSuspiciousDetections = useCallback(
+    (
+      detections: Array<{
+        categories?: Array<{ categoryName?: string; score?: number }>;
+        boundingBox?: {
+          originX?: number;
+          originY?: number;
+          width?: number;
+          height?: number;
+        };
+      }>,
+      video: HTMLVideoElement,
+    ) => {
+      const frameArea = Math.max(1, (video.videoWidth || 1) * (video.videoHeight || 1));
+
+      return detections.filter((detection) => {
+        const label = (detection.categories?.[0]?.categoryName || "").toLowerCase();
+        const score = detection.categories?.[0]?.score ?? 0;
+        const originY = detection.boundingBox?.originY ?? 0;
+        const width = detection.boundingBox?.width ?? 0;
+        const height = detection.boundingBox?.height ?? 0;
+        const areaRatio = (width * height) / frameArea;
+
+        const isPhone = /cell phone|mobile phone|smartphone|\bphone\b/.test(label);
+        const isBookLike = /\bbook\b|\bnotebook\b|\bnotepad\b|\bdiary\b|\bjournal\b/.test(label);
+        const isLaptopLike = /\blaptop\b|notebook computer/.test(label);
+
+        if (isLaptopLike) {
+          const videoHeight = Math.max(1, video.videoHeight || 1);
+          const normalizedBottomEdge = (originY + height) / videoHeight;
+          const looksLikeUserPrimaryLaptop =
+            normalizedBottomEdge >= OBJECT_USER_LAPTOP_BOTTOM_ZONE;
+
+          if (looksLikeUserPrimaryLaptop) {
+            return false;
+          }
+
+          return (
+            score >= OBJECT_LAPTOP_MIN_SCORE &&
+            areaRatio >= OBJECT_LAPTOP_MIN_AREA_RATIO
+          );
+        }
+
+        if (isBookLike) {
+          return score >= 0.32 && areaRatio >= 0.012;
+        }
+
+        if (isPhone) {
+          return score >= OBJECT_SUSPICIOUS_MIN_SCORE && areaRatio >= 0.015;
+        }
+
+        return false;
+      });
+    },
+    [],
+  );
+
   const validateInterviewConditions = useCallback(async () => {
     if (
       !videoRef.current ||
@@ -317,13 +395,6 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       !isModelReadyRef.current
     ) {
       return { ok: false, message: "Camera is not ready yet." };
-    }
-
-    if (document.visibilityState !== "visible" || !document.hasFocus()) {
-      return {
-        ok: false,
-        message: "Return to the interview tab before resuming.",
-      };
     }
 
     const video = videoRef.current;
@@ -349,16 +420,10 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
       if (objectDetector) {
         const results = await objectDetector.detectForVideo(video, performance.now());
-        const suspicious = results.detections.filter((d) => {
-          const label = (d.categories[0]?.categoryName || "").toLowerCase();
-          return (
-            ["cell phone", "mobile phone", "smartphone", "book", "laptop"].includes(label) &&
-            (d.categories[0]?.score ?? 0) > 0.22
-          );
-        });
+        const suspicious = getSuspiciousDetections(results.detections, video);
 
         if (suspicious.length > 0) {
-          const labels = [...new Set(suspicious.map((d) => d.categories[0]?.categoryName || "unknown"))];
+          const labels = [...new Set(suspicious.map((d) => d.categories?.[0]?.categoryName || "unknown"))];
           setSuspiciousObjectsList(labels);
           return {
             ok: false,
@@ -375,7 +440,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         message: "Unable to recheck the camera right now. Please try again.",
       };
     }
-  }, []);
+  }, [getSuspiciousDetections]);
 
   const handleFixedIt = async () => {
     const validation = await validateInterviewConditions();
@@ -392,7 +457,19 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     setShowTabSwitchModal(false);
     setIsPaused(false);
     isPausedRef.current = false;
-    setMessages((prev) => [...prev, { text: "Checks passed. Resuming interview.", isBot: true }]);
+
+    setMessages((prev) => {
+      const resumedMessages = [...prev, { text: "Checks passed. Resuming interview.", isBot: true }];
+
+      if (lastInterviewQuestionRef.current.trim()) {
+        resumedMessages.push({
+          text: `Question again: ${lastInterviewQuestionRef.current}`,
+          isBot: true,
+        });
+      }
+
+      return resumedMessages;
+    });
   };
 
   const toggleCamera = () => {
@@ -452,7 +529,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
           // A GPU is a processor designed to handle many calculations at the same time, especially for graphics and heavy computations like AI and machine learning.
           //modelAssetPath This loads the trained object detection model file.
-          scoreThreshold: 0.18,
+          scoreThreshold: 0.35,
           maxResults: 10,
           runningMode: "VIDEO",
         });
@@ -514,6 +591,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       setFacesDetected(detections.length);
 
       if (detections.length > 1) {
+        proctoringIncidentRef.current.multiFace += 1;
         setIsPaused(true);
         isPausedRef.current = true;
         setShowMultiFaceModal(true);
@@ -602,6 +680,10 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         topic: activeTopic,
         difficulty: selectedDifficulty || "Medium",
         duration: selectedDuration,
+        proctoring: {
+          multiFace: proctoringIncidentRef.current.multiFace,
+          suspiciousObject: proctoringIncidentRef.current.suspiciousObject,
+        },
         endedAt: new Date().toISOString(),
       }),
     );
@@ -649,25 +731,33 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         videoRef.current,
         performance.now(),
       );
-      const suspicious = results.detections.filter((d) => {
-        const label = (d.categories[0]?.categoryName || "").toLowerCase();
-        return (
-          [
-            "cell phone",
-            "mobile phone",
-            "smartphone",
-            "book",
-            "laptop",
-          ].includes(label) && (d.categories[0]?.score ?? 0) > 0.22
-        );
-      });
+      const suspicious = getSuspiciousDetections(results.detections, videoRef.current);
 
-      if (suspicious.length > 0 && !isPausedRef.current) {
+      const hasBookLikeSuspicious = suspicious.some((d) => {
+        const label = (d.categories?.[0]?.categoryName || "").toLowerCase();
+        return /\bbook\b|\bnotebook\b|\bnotepad\b|\bdiary\b|\bjournal\b/.test(label);
+      });
+      const requiredSuspiciousFrames = hasBookLikeSuspicious
+        ? 2
+        : OBJECT_SUSPICIOUS_CONSECUTIVE_FRAMES;
+
+      if (suspicious.length > 0) {
+        suspiciousFrameStreakRef.current += 1;
+      } else {
+        suspiciousFrameStreakRef.current = 0;
+      }
+
+      if (
+        suspicious.length > 0 &&
+        !isPausedRef.current &&
+        suspiciousFrameStreakRef.current >= requiredSuspiciousFrames
+      ) {
         const now = Date.now();
         if (now - lastObjectAlertTimeRef.current > OBJECT_ALERT_COOLDOWN_MS) {
+          proctoringIncidentRef.current.suspiciousObject += 1;
           const labels = [
             ...new Set(
-              suspicious.map((d) => d.categories[0]?.categoryName || "unknown"),
+              suspicious.map((d) => d.categories?.[0]?.categoryName || "unknown"),
             ),
           ];
           setSuspiciousObjectsList(labels);
@@ -682,6 +772,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
             },
           ]);
           lastObjectAlertTimeRef.current = now;
+          suspiciousFrameStreakRef.current = 0;
         }
       }
     } catch (err) {
@@ -691,7 +782,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     }
 
     requestAnimationFrame(detectObjects);
-  }, []);
+  }, [getSuspiciousDetections]);
 
   useEffect(() => {
     if (cameraActive) detectObjects();
@@ -1102,6 +1193,16 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       if (!res.ok) throw new Error("Backend error");
 
       const data = await res.json();
+
+      const replyText = String(data.reply || "").trim();
+      if (
+        replyText &&
+        replyText.includes("?") &&
+        !replyText.toLowerCase().includes("interview complete")
+      ) {
+        lastInterviewQuestionRef.current = replyText;
+      }
+
       setMessages((prev) => [...prev, { text: data.reply, isBot: true }]);
 
       if (data.reply.toLowerCase().includes("interview complete") || data.reply.includes("ended")) {
@@ -1262,6 +1363,8 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     }
   };
   const [showCode, setShowCode] = useState(false)
+  const activeTopicHeading = cleanTopic || customTopic || manualTopic.trim() || "Interview";
+  const activeDifficultyHeading = selectedDifficulty || "Medium";
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-purple-50 dark:from-slate-950 dark:to-purple-950/40">
@@ -1272,7 +1375,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
               <div className="w-3 h-3 bg-green-500 rounded-full mr-2 animate-pulse" />
               Live Interview
             </Badge>
-            <h2 className="text-2xl font-bold">Senior React Engineer</h2>
+            <h2 className="text-2xl font-bold">{`${activeTopicHeading} (${activeDifficultyHeading})`}</h2>
           </div>
 
           <div className="flex items-center gap-6">

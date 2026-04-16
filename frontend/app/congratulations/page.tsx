@@ -41,6 +41,10 @@ type InterviewContext = {
   topic: string;
   difficulty?: string;
   duration?: number;
+  proctoring?: {
+    multiFace?: number;
+    suspiciousObject?: number;
+  };
   startedAt?: string;
   endedAt?: string;
 };
@@ -124,6 +128,10 @@ export default function CongratulationPage() {
             difficulty: parsedContext.difficulty || "Medium",
             presenceScore: safePresence,
             candidateName,
+            proctoring: {
+              multiFace: Number(parsedContext.proctoring?.multiFace || 0),
+              suspiciousObject: Number(parsedContext.proctoring?.suspiciousObject || 0),
+            },
           }),
         });
 
