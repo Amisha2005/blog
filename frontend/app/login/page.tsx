@@ -10,7 +10,7 @@ import Link from "next/link";
 import { Github, Chrome, Mail, Lock } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "../Auth";
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "https://virtual-interview-32pw.onrender.com";
 const URL = `${API_BASE_URL}/api/auth/login`;
 export default function LoginPage() {
 const router = useRouter(); // ← Add this line

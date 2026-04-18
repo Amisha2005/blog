@@ -62,7 +62,7 @@ interface LeaderboardEntry {
   createdAt: string;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "https://virtual-interview-32pw.onrender.com";
 const DEMO_TOPIC_NAMES = new Set([
   "react",
   "system design",

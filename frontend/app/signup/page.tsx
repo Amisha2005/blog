@@ -17,7 +17,7 @@ import { Github, Chrome, Mail, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "../Auth";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "https://virtual-interview-32pw.onrender.com";
 
 export default function SignUpPage() {
   const router = useRouter();

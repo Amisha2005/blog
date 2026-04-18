@@ -49,7 +49,7 @@ type InterviewContext = {
   endedAt?: string;
 };
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "https://virtual-interview-32pw.onrender.com";
 
 const scoreColor = (score: number) => {
   if (score >= 85) return "text-emerald-400";
