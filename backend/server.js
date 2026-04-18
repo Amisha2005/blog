@@ -24,8 +24,16 @@ app.use(cors(corsOptions));
 
 app.use(express.json());
 
+// const allowedOrigins = ["blog-git-backend-amecodeheres-projects.vercel.app", "https://blog-bice-nine-cgb1wvb8h2.vercel.app"];
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || "").split(",")
+
 app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "https://blog-bice-nine-cgb1wvb8h2.vercel.app");
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin) ||
+    (origin && origin.endsWith(".vercel.app"))) {
+    res.header("Access-Control-Allow-Origin", origin);
+  }
+  // res.header("Access-Control-Allow-Origin", "https://blog-bice-nine-cgb1wvb8h2.vercel.app");
   res.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,PATCH,HEAD");
   res.header("Access-Control-Allow-Headers", "Content-Type,Authorization");
   res.header("Access-Control-Allow-Credentials", true);
