@@ -50,6 +50,7 @@ interface InterviewTopic {
   _id: string;
   topicName: string;
   isDemoTopic?: boolean;
+  isInferredFromResults?: boolean;
 }
 
 interface LeaderboardEntry {
@@ -146,7 +147,7 @@ export default function AdminDashboard() {
 
   const fetchTopics = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/topics`);
+      const res = await fetch(`${API_BASE_URL}/api/topics?includeResultTopics=true`);
       if (res.ok) {
         const data = await res.json();
         const topicsArray = Array.isArray(data) ? data : (data.topics || []);
@@ -203,6 +204,7 @@ export default function AdminDashboard() {
       if (res.ok) {
         alert("✅ Interview Topic Added Successfully!");
         setNewTopic({ topicName: "", description: "", image: "", date: "" });
+        await fetchTopics();
       } else {
         alert("Failed to add topic");
       }
@@ -296,12 +298,18 @@ export default function AdminDashboard() {
                   {topics.map((topic) => (
                     <SelectItem key={topic._id} value={topic.topicName}>
                       {topic.topicName}
-                      {isDemoTopic(topic) ? " (Demo)" : ""}
+                      {isDemoTopic(topic)
+                        ? " (Demo)"
+                        : topic.isInferredFromResults
+                          ? " (From Results)"
+                          : ""}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground">Topics marked with DEMO are demo interview topics.</p>
+              <p className="text-xs text-muted-foreground">
+                Topics marked with DEMO are demo interview topics. Topics marked with From Results were auto-discovered from interview results.
+              </p>
             </div>
 
             {leaderboardLoading ? (
