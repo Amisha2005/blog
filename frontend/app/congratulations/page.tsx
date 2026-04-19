@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { useAuth } from "@/app/Auth";
 
 type ScorePayload = {
   overall?: number;
@@ -73,6 +74,7 @@ const getRankIcon = (rank: number) => {
 };
 
 export default function CongratulationPage() {
+  const { user } = useAuth();
   const [scores, setScores] = useState<ScorePayload | null>(null);
   const [presenceScore, setPresenceScore] = useState<number>(65);
   const [context, setContext] = useState<InterviewContext | null>(null);
@@ -118,7 +120,7 @@ export default function CongratulationPage() {
           return;
         }
 
-        const candidateName = `Candidate-${parsedContext.sessionId.slice(0, 6)}`;
+        const candidateName = (user?.username || user?.email?.split("@")[0] || "Candidate").trim();
         const evalRes = await fetch(`${API_BASE_URL}/api/evaluate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -164,7 +166,7 @@ export default function CongratulationPage() {
     };
 
     loadResults();
-  }, []);
+  }, [user]);
 
   const finalScore = useMemo(() => {
     if (Number.isFinite(scores?.finalScore)) {
