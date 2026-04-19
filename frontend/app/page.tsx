@@ -29,18 +29,18 @@ const recentPosts = [
   {
     id: 1,
     src: "https://tse3.mm.bing.net/th/id/OIP.oR7K377pdzitXWkOEdSIEQHaEK?pid=Api&P=0&h=180",
-    title: "React Fundamentals",
+    title: "React",
     category: "TypeScript",
     date: "Dec 2",
-   
+    source: "demo",
   },
   {
     id: 2,
     src: "https://tse3.mm.bing.net/th/id/OIP.SBg2sgLVDVZoNR6fLO2ZKAHaFI?pid=Api&P=0&h=180",
-    title: "Mastering PYTHON in 2025",
+    title: "Python",
     category: "A11y",
     date: "Nov 30",
-  
+    source: "demo",
   },
   {
     id: 3,
@@ -48,19 +48,25 @@ const recentPosts = [
     title: "System Design",
     category: "Design",
     date: "Nov 28",
-    
+    source: "demo",
   },
   {
     id: 4,
     src: "https://tse1.mm.bing.net/th/id/OIP.WaCOgSUgMm-RNN1PhMBPWgHaEK?pid=Api&P=0&h=180",
-    title: "customize your interview",
+    title: "Customize your interview",
     category: "choose topic according to you",
     date: "Nov 25",
-    
+    source: "custom",
   },
 ];
 
 export default function Home() {
+  const handleCustomizeClick = () => {
+    alert(
+      "Custom interviews are configured manually. Please open Interview Setup and type your own topic to continue.",
+    );
+  };
+
   return (
     <div className="container mx-auto max-w-6xl px-4 py-12 md:px-6 md:py-16">
       <section className="relative mb-20 grid items-center gap-10 lg:grid-cols-[1.15fr_0.85fr]">
@@ -135,9 +141,15 @@ export default function Home() {
                   <Badge variant="outline" className="w-fit rounded-full">
                     {post.category}
                   </Badge>
-                  <Badge className="rounded-full border-0 bg-blue-100 text-blue-700">
-                    Demo Topic
-                  </Badge>
+                  {post.source === "demo" ? (
+                    <Badge className="rounded-full border-0 bg-blue-100 text-blue-700">
+                      Demo Topic
+                    </Badge>
+                  ) : (
+                    <Badge className="rounded-full border-0 bg-amber-100 text-amber-700">
+                      Custom Setup
+                    </Badge>
+                  )}
                 </div>
                 <CardTitle className="line-clamp-2 text-lg transition-colors group-hover:text-primary">
                   {post.title}
@@ -146,11 +158,21 @@ export default function Home() {
               </CardContent>
 
               <CardFooter className="p-5 pt-0">
-                <Button variant="ghost" className="w-full justify-between rounded-xl" asChild>
-                  <Link href={`/interview/setup?topic=${encodeURIComponent(post.title)}&source=demo`}>
-                    Try Demo <span>→</span>
-                  </Link>
-                </Button>
+                {post.source === "custom" ? (
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-between rounded-xl"
+                    onClick={handleCustomizeClick}
+                  >
+                    How it works <span>→</span>
+                  </Button>
+                ) : (
+                  <Button variant="ghost" className="w-full justify-between rounded-xl" asChild>
+                    <Link href={`/interview/setup?topic=${encodeURIComponent(post.title)}&source=demo`}>
+                      Try Demo <span>→</span>
+                    </Link>
+                  </Button>
+                )}
               </CardFooter>
             </Card>
           ))}

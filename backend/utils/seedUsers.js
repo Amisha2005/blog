@@ -59,6 +59,11 @@ const seedTopics = [
     image: "https://cdn.worldvectorlogo.com/logos/javascript-1.svg",
   },
   {
+    topicName: "Python",
+    description: "Practice Python fundamentals, OOP, data structures, scripting patterns, and interview-focused problem solving for real-world backend and automation use cases.",
+    image: "https://cdn.worldvectorlogo.com/logos/python-5.svg",
+  },
+  {
     topicName: "Node.js",
     description: "Backend development with Node.js, Express.js, REST APIs, middleware, authentication, and server-side best practices.",
     image: "https://cdn.worldvectorlogo.com/logos/nodejs-icon.svg",
