@@ -69,17 +69,12 @@ export default function InterviewSetupClient({
     return () => window.removeEventListener("resize", evaluateDevice);
   }, []);
 
-  const topicSource: "demo" | "admin" | "custom" =
-    initialSource === "demo" || initialSource === "admin"
-      ? initialSource
-      : "custom";
+  const topicSource: "demo" | "admin" = initialSource === "demo" ? "demo" : "admin";
 
   const topicSourceLabel =
     topicSource === "demo"
       ? "Demo Topic"
-      : topicSource === "admin"
-        ? "Admin Added Topic"
-        : "Custom Topic";
+      : "Admin Added Topic";
 
   const [topic, setTopic] = useState(initialTopic ? decodeURIComponent(initialTopic) : "");
   const [difficulty, setDifficulty] = useState<"Easy" | "Medium" | "Hard" | "">("");
@@ -201,12 +196,12 @@ export default function InterviewSetupClient({
               </div>
               <Textarea
                 value={topic}
-                onChange={(e) => setTopic(e.target.value)}
+                readOnly
                 placeholder="e.g. React Hooks, Node.js APIs, System Design"
                 className="min-h-24 resize-none"
               />
               <p className="mt-2 text-sm text-muted-foreground">
-                Topic is pre-filled from your selected option. You can edit it before starting.
+                Topic is selected from Demo or Admin-added topics and cannot be edited here.
               </p>
             </div>
 

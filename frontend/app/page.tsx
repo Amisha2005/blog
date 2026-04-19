@@ -50,23 +50,9 @@ const recentPosts = [
     date: "Nov 28",
     source: "demo",
   },
-  {
-    id: 4,
-    src: "https://tse1.mm.bing.net/th/id/OIP.WaCOgSUgMm-RNN1PhMBPWgHaEK?pid=Api&P=0&h=180",
-    title: "Customize your interview",
-    category: "choose topic according to you",
-    date: "Nov 25",
-    source: "custom",
-  },
 ];
 
 export default function Home() {
-  const handleCustomizeClick = () => {
-    alert(
-      "Custom interviews are configured manually. Please open Interview Setup and type your own topic to continue.",
-    );
-  };
-
   return (
     <div className="container mx-auto max-w-6xl px-4 py-12 md:px-6 md:py-16">
       <section className="relative mb-20 grid items-center gap-10 lg:grid-cols-[1.15fr_0.85fr]">
@@ -141,15 +127,9 @@ export default function Home() {
                   <Badge variant="outline" className="w-fit rounded-full">
                     {post.category}
                   </Badge>
-                  {post.source === "demo" ? (
-                    <Badge className="rounded-full border-0 bg-blue-100 text-blue-700">
-                      Demo Topic
-                    </Badge>
-                  ) : (
-                    <Badge className="rounded-full border-0 bg-amber-100 text-amber-700">
-                      Custom Setup
-                    </Badge>
-                  )}
+                  <Badge className="rounded-full border-0 bg-blue-100 text-blue-700">
+                    Demo Topic
+                  </Badge>
                 </div>
                 <CardTitle className="line-clamp-2 text-lg transition-colors group-hover:text-primary">
                   {post.title}
@@ -158,21 +138,11 @@ export default function Home() {
               </CardContent>
 
               <CardFooter className="p-5 pt-0">
-                {post.source === "custom" ? (
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-between rounded-xl"
-                    onClick={handleCustomizeClick}
-                  >
-                    How it works <span>→</span>
-                  </Button>
-                ) : (
-                  <Button variant="ghost" className="w-full justify-between rounded-xl" asChild>
-                    <Link href={`/interview/setup?topic=${encodeURIComponent(post.title)}&source=demo`}>
-                      Try Demo <span>→</span>
-                    </Link>
-                  </Button>
-                )}
+                <Button variant="ghost" className="w-full justify-between rounded-xl" asChild>
+                  <Link href={`/interview/setup?topic=${encodeURIComponent(post.title)}&source=demo`}>
+                    Try Demo <span>→</span>
+                  </Link>
+                </Button>
               </CardFooter>
             </Card>
           ))}

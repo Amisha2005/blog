@@ -13,7 +13,7 @@ export default async function InterviewSetupPage({ searchParams }: InterviewSetu
   return (
     <InterviewSetupClient
       initialTopic={params?.topic ?? ""}
-      initialSource={params?.source ?? "custom"}
+      initialSource={params?.source ?? "admin"}
     />
   );
 }
