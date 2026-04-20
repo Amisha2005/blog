@@ -166,10 +166,14 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const OBJECT_DETECTION_MAX_INTERVAL_MS = 1800;
   const OBJECT_SUSPICIOUS_MIN_SCORE = 0.5;
   const OBJECT_SUSPICIOUS_MIN_AREA_RATIO = 0.04;
-  const OBJECT_PHONE_MIN_SCORE = 0.22;
-  const OBJECT_PHONE_MIN_AREA_RATIO = 0.006;
-  const OBJECT_SCREEN_MIN_SCORE = 0.45;
-  const OBJECT_SCREEN_MIN_AREA_RATIO = 0.03;
+  const OBJECT_PHONE_MIN_SCORE = 0.2;
+  const OBJECT_PHONE_MIN_AREA_RATIO = 0.008;
+  const OBJECT_TABLET_MIN_SCORE = 0.22;
+  const OBJECT_TABLET_MIN_AREA_RATIO = 0.012;
+  const OBJECT_HANDHELD_AID_MIN_SCORE = 0.36;
+  const OBJECT_HANDHELD_AID_MIN_AREA_RATIO = 0.005;
+  const OBJECT_SCREEN_MIN_SCORE = 0.36;
+  const OBJECT_SCREEN_MIN_AREA_RATIO = 0.02;
   const OBJECT_LAPTOP_MIN_SCORE = 0.72;
   const OBJECT_LAPTOP_MIN_AREA_RATIO = 0.1;
   const OBJECT_USER_LAPTOP_BOTTOM_ZONE = 0.7;
@@ -442,15 +446,6 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     ) => {
       const frameArea = Math.max(1, (video.videoWidth || 1) * (video.videoHeight || 1));
 
-      const getTopScore = (
-        categories: Array<{ label: string; score: number }>,
-        matcher: RegExp,
-      ) => {
-        return categories
-          .filter((category) => matcher.test(category.label))
-          .reduce((max, category) => Math.max(max, category.score), 0);
-      };
-
       return detections.filter((detection) => {
         const categories = (detection.categories || []).map((category) => ({
           label: (category.categoryName || "").toLowerCase(),
@@ -464,27 +459,52 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         const height = detection.boundingBox?.height ?? 0;
         const areaRatio = (width * height) / frameArea;
 
-        const phoneScore = getTopScore(
-          categories,
-          /cell phone|mobile phone|smartphone|\bphone\b|iphone|android/,
-        );
-        const bookScore = getTopScore(
-          categories,
-          /\bbook\b|\bnotebook\b|\bnotepad\b|\bdiary\b|\bjournal\b/,
-        );
-        const laptopScore = getTopScore(
-          categories,
-          /\blaptop\b|notebook computer/,
-        );
-        const screenScore = getTopScore(
-          categories,
-          /\bmonitor\b|computer monitor|\btv\b|television|display screen/,
-        );
+        const phoneLikePattern =
+          /cell phone|mobile phone|smartphone|\bphone\b|iphone|android|telephone handset|cellular telephone/;
+        const tabletLikePattern =
+          /\btablet\b|ipad|tablet computer|galaxy tab|tab device|e-reader|kindle/;
+        const bookLikePattern =
+          /\bbook\b|\bnotebook\b|\bnotepad\b|\bdiary\b|\bjournal\b|document|paper/;
+        const laptopLikePattern = /\blaptop\b|notebook computer/;
+        const screenLikePattern =
+          /\bmonitor\b|computer monitor|\btv\b|television|display screen|desktop computer/;
+        const handheldAidPattern =
+          /remote control|\bcalculator\b|electronic device|portable media player|digital device/;
+
+        let phoneScore = 0;
+        let tabletScore = 0;
+        let bookScore = 0;
+        let laptopScore = 0;
+        let screenScore = 0;
+        let handheldAidScore = 0;
+
+        for (const category of categories) {
+          if (phoneLikePattern.test(category.label)) {
+            phoneScore = Math.max(phoneScore, category.score);
+          }
+          if (tabletLikePattern.test(category.label)) {
+            tabletScore = Math.max(tabletScore, category.score);
+          }
+          if (bookLikePattern.test(category.label)) {
+            bookScore = Math.max(bookScore, category.score);
+          }
+          if (laptopLikePattern.test(category.label)) {
+            laptopScore = Math.max(laptopScore, category.score);
+          }
+          if (screenLikePattern.test(category.label)) {
+            screenScore = Math.max(screenScore, category.score);
+          }
+          if (handheldAidPattern.test(category.label)) {
+            handheldAidScore = Math.max(handheldAidScore, category.score);
+          }
+        }
 
         const isPhone = phoneScore > 0;
+        const isTablet = tabletScore > 0;
         const isBookLike = bookScore > 0;
         const isLaptopLike = laptopScore > 0;
         const isScreenLike = screenScore > 0;
+        const isHandheldAid = handheldAidScore > 0;
 
         if (isLaptopLike) {
           const videoHeight = Math.max(1, video.videoHeight || 1);
@@ -507,9 +527,19 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         }
 
         if (isPhone) {
+          if (phoneScore >= 0.5 && areaRatio >= 0.0025) return true;
+          if (phoneScore >= 0.3 && areaRatio >= 0.005) return true;
           return (
             phoneScore >= OBJECT_PHONE_MIN_SCORE &&
             areaRatio >= OBJECT_PHONE_MIN_AREA_RATIO
+          );
+        }
+
+        if (isTablet) {
+          if (tabletScore >= 0.5 && areaRatio >= 0.005) return true;
+          return (
+            tabletScore >= OBJECT_TABLET_MIN_SCORE &&
+            areaRatio >= OBJECT_TABLET_MIN_AREA_RATIO
           );
         }
 
@@ -517,6 +547,13 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
           return (
             screenScore >= OBJECT_SCREEN_MIN_SCORE &&
             areaRatio >= OBJECT_SCREEN_MIN_AREA_RATIO
+          );
+        }
+
+        if (isHandheldAid) {
+          return (
+            handheldAidScore >= OBJECT_HANDHELD_AID_MIN_SCORE &&
+            areaRatio >= OBJECT_HANDHELD_AID_MIN_AREA_RATIO
           );
         }
 
@@ -539,10 +576,12 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       const findLabel = (matcher: RegExp) => labels.find((label) => matcher.test(label));
 
       return (
-        findLabel(/cell phone|mobile phone|smartphone|\bphone\b|iphone|android/) ||
+        findLabel(/cell phone|mobile phone|smartphone|\bphone\b|iphone|android|telephone handset|cellular telephone/) ||
+        findLabel(/\btablet\b|ipad|tablet computer|galaxy tab|tab device|e-reader|kindle/) ||
         findLabel(/\blaptop\b|notebook computer/) ||
-        findLabel(/\bmonitor\b|computer monitor|\btv\b|television|display screen/) ||
-        findLabel(/\bbook\b|\bnotebook\b|\bnotepad\b|\bdiary\b|\bjournal\b/) ||
+        findLabel(/\bmonitor\b|computer monitor|\btv\b|television|display screen|desktop computer/) ||
+        findLabel(/\bbook\b|\bnotebook\b|\bnotepad\b|\bdiary\b|\bjournal\b|document|paper/) ||
+        findLabel(/remote control|\bcalculator\b|electronic device|portable media player|digital device/) ||
         labels[0] ||
         "unknown"
       );
