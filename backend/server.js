@@ -307,7 +307,16 @@ ${avoidLines}`,
 
 // ── Evaluation Endpoint ────────────────────────────────────────
 app.post("/api/evaluate", async (req, res) => {
-  const { sessionId, topic, difficulty, presenceScore, candidateName, proctoring } = req.body;
+  const {
+    sessionId,
+    topic,
+    difficulty,
+    presenceScore,
+    candidateName,
+    candidateId,
+    candidateEmail,
+    proctoring,
+  } = req.body;
 
   if (!sessionId) return res.status(400).json({ error: "Missing sessionId" });
 
@@ -328,6 +337,8 @@ app.post("/api/evaluate", async (req, res) => {
           topic: (topic || "General").trim(),
           difficulty: difficulty || "Medium",
           candidateName: (candidateName || "Candidate").trim(),
+          candidateId: candidateId ? String(candidateId).trim() : undefined,
+          candidateEmail: candidateEmail ? String(candidateEmail).trim().toLowerCase() : undefined,
           overall: safeOverallValue,
           presenceScore: safePresenceValue,
           finalScore: finalScoreValue,
@@ -508,11 +519,79 @@ app.get("/api/leaderboard", async (req, res) => {
     const escapedTopic = topic.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const topicQuery = new RegExp(`^${escapedTopic}$`, "i");
 
-    const rows = await InterviewResult.find({ topic: topicQuery })
-      .sort({ finalScore: -1, createdAt: 1 })
-      .limit(limit)
-      .select("candidateName topic difficulty overall presenceScore finalScore createdAt")
-      .lean();
+    const rows = await InterviewResult.aggregate([
+      { $match: { topic: topicQuery } },
+      {
+        $addFields: {
+          _normalizedName: {
+            $toLower: {
+              $trim: {
+                input: {
+                  $ifNull: ["$candidateName", "Candidate"],
+                },
+              },
+            },
+          },
+          _normalizedEmail: {
+            $toLower: {
+              $trim: {
+                input: {
+                  $ifNull: ["$candidateEmail", ""],
+                },
+              },
+            },
+          },
+        },
+      },
+      {
+        $addFields: {
+          candidateKey: {
+            $cond: [
+              {
+                $gt: [
+                  {
+                    $strLenCP: {
+                      $ifNull: ["$candidateId", ""],
+                    },
+                  },
+                  0,
+                ],
+              },
+              {
+                $concat: ["id:", "$candidateId"],
+              },
+              {
+                $cond: [
+                  {
+                    $gt: [{ $strLenCP: "$_normalizedEmail" }, 0],
+                  },
+                  {
+                    $concat: ["email:", "$_normalizedEmail"],
+                  },
+                  {
+                    $concat: ["name:", "$_normalizedName"],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      },
+      { $sort: { finalScore: -1, createdAt: -1 } },
+      {
+        $group: {
+          _id: "$candidateKey",
+          candidateName: { $first: "$candidateName" },
+          difficulty: { $first: "$difficulty" },
+          overall: { $first: "$overall" },
+          presenceScore: { $first: "$presenceScore" },
+          finalScore: { $first: "$finalScore" },
+          createdAt: { $first: "$createdAt" },
+        },
+      },
+      { $sort: { finalScore: -1, createdAt: -1 } },
+      { $limit: limit },
+    ]);
 
     res.json({
       topic,
