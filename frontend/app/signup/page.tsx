@@ -72,7 +72,7 @@ export default function SignUpPage() {
         {/* Grid background (dark mode only) */}
         <div className="absolute inset-0 bg-grid-black/5 dark:bg-grid-white/5 bg-grid-16 pointer-events-none hidden dark:block" />
 
-        <Card className="relative w-full max-w-md shadow-2xl border border-gray-200/50 dark:border-white/10 bg-white/80 dark:bg-black/60 backdrop-blur-xl">
+        <Card className="relative w-full max-w-md shadow-2xl border border-gray-200/50 dark:border-white/10 bg-white/80 dark:bg-black/60 backdrop-blur-xl sm:max-w-lg">
           {/* Subtle inner glow */}
           <div className="absolute inset-0 bg-gradient-to-br from-purple-400/5 via-transparent to-pink-400/5 dark:from-purple-600/10 dark:to-pink-600/10 rounded-2xl" />
 
@@ -89,9 +89,9 @@ export default function SignUpPage() {
             </CardDescription>
           </CardHeader>
 
-          <CardContent className="relative z-10 space-y-6 pb-10 px-8">
+          <CardContent className="relative z-10 space-y-6 px-4 pb-8 sm:px-8 sm:pb-10">
             {/* Social Login */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Button
                 variant="outline"
                 className="w-full h-12 font-medium border-gray-300 dark:border-white/20 bg-gray-50/50 dark:bg-white/5 hover:bg-gray-100 dark:hover:bg-white/10 backdrop-blur-sm"
@@ -180,8 +180,8 @@ export default function SignUpPage() {
               <Button
                 size="lg"
                 className="w-full h-12 text-lg font-semibold bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-lg transform transition hover:scale-[1.02] active:scale-[0.98]"
-                 onClick={handleSubmit}
-                 >
+                onClick={handleSubmit}
+              >
                 <Mail className="mr-2 h-5 w-5" />
                 Sign Up with Email
               </Button>

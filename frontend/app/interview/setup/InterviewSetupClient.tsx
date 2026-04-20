@@ -221,7 +221,7 @@ export default function InterviewSetupClient({
             <Button
               type="button"
               size="lg"
-              className="group relative h-14 min-w-[240px] rounded-2xl border border-sky-400/40 bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-500 px-10 text-base font-semibold tracking-wide text-white shadow-lg shadow-cyan-500/30 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-cyan-500/40 disabled:cursor-not-allowed disabled:opacity-50"
+              className="group relative h-14 w-full rounded-2xl border border-sky-400/40 bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-500 px-8 text-base font-semibold tracking-wide text-white shadow-lg shadow-cyan-500/30 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-cyan-500/40 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:min-w-[240px] sm:px-10"
               onClick={handleStart}
               disabled={!canStart}
             >

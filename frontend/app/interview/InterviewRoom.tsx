@@ -132,6 +132,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
   // Emotion & Object detection
   const [isModelReady, setIsModelReady] = useState<boolean>(false);
+  const [isObjectDetectorReady, setIsObjectDetectorReady] = useState<boolean>(false);
   const emotionSamplesRef = useRef<
     { smile: number; stress: number; conf: number; timestamp: number }[]
   >([]);
@@ -161,8 +162,8 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const OBJECT_LAPTOP_MIN_AREA_RATIO = 0.1;
   const OBJECT_USER_LAPTOP_BOTTOM_ZONE = 0.7;
   const OBJECT_SUSPICIOUS_CONSECUTIVE_FRAMES = 3;
-  const lastFaceDetectionTimeRef = useRef<number>(0);
-  const lastObjectDetectionTimeRef = useRef<number>(0);
+  const emotionLoopTimeoutRef = useRef<any>(null);
+  const objectLoopTimeoutRef = useRef<any>(null);
   const isFaceDetectionRunningRef = useRef(false);
   const isObjectDetectionRunningRef = useRef(false);
 
@@ -203,6 +204,29 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   useEffect(() => {
     isPausedRef.current = isPaused;
   }, [isPaused]);
+
+  const stopEmotionDetectionLoop = useCallback(() => {
+    if (emotionLoopTimeoutRef.current) {
+      clearTimeout(emotionLoopTimeoutRef.current);
+      emotionLoopTimeoutRef.current = null;
+    }
+
+    isFaceDetectionRunningRef.current = false;
+  }, []);
+
+  const stopObjectDetectionLoop = useCallback(() => {
+    if (objectLoopTimeoutRef.current) {
+      clearTimeout(objectLoopTimeoutRef.current);
+      objectLoopTimeoutRef.current = null;
+    }
+
+    isObjectDetectionRunningRef.current = false;
+  }, []);
+
+  const stopDetectionLoops = useCallback(() => {
+    stopEmotionDetectionLoop();
+    stopObjectDetectionLoop();
+  }, [stopEmotionDetectionLoop, stopObjectDetectionLoop]);
 
   const runTimerInterval = () => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -315,6 +339,8 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   };
 
   const stopCamera = () => {
+    stopDetectionLoops();
+
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
@@ -533,6 +559,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
           maxResults: 10,
           runningMode: "VIDEO",
         });
+        setIsObjectDetectorReady(true);
       } catch (e) {
         console.error("Object detector init failed", e);
       }
@@ -548,34 +575,19 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   // ────────────────────────────────────────────────
   //useCallback is a React Hook used to memoize (remember) a function so that it is not recreated on every render. 🔁
   const detectEmotions = useCallback(async () => {
-    if (!videoRef.current || !cameraActiveRef.current || interviewEndedRef.current || !isModelReadyRef.current) {
-      requestAnimationFrame(detectEmotions);
-      return;
-    }
-
-    if (isPausedRef.current) {
-      requestAnimationFrame(detectEmotions);
-      return;
-    }
-
-    const now = performance.now();
-    if (now - lastFaceDetectionTimeRef.current < FACE_DETECTION_INTERVAL_MS) {
-      requestAnimationFrame(detectEmotions);
+    if (!videoRef.current || !cameraActiveRef.current || interviewEndedRef.current || !isModelReadyRef.current || isPausedRef.current) {
       return;
     }
 
     if (isFaceDetectionRunningRef.current) {
-      requestAnimationFrame(detectEmotions);
       return;
     }
 
     isFaceDetectionRunningRef.current = true;
-    lastFaceDetectionTimeRef.current = now;
 
     const video = videoRef.current;
     if (video.paused || video.ended || video.videoWidth === 0) {
       isFaceDetectionRunningRef.current = false;
-      requestAnimationFrame(detectEmotions);
       return;
     }
 
@@ -634,7 +646,16 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       isFaceDetectionRunningRef.current = false;
     }
 
-    requestAnimationFrame(detectEmotions);
+    if (
+      cameraActiveRef.current &&
+      !interviewEndedRef.current &&
+      isModelReadyRef.current &&
+      !isPausedRef.current
+    ) {
+      emotionLoopTimeoutRef.current = window.setTimeout(() => {
+        void detectEmotions();
+      }, FACE_DETECTION_INTERVAL_MS);
+    }
   }, []);
 
   const calculateFinalPresenceScore = () => {
@@ -690,41 +711,30 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   }, [cleanTopic, customTopic, manualTopic, selectedDifficulty, selectedDuration, sessionId]);
 
   useEffect(() => {
-    if (cameraActive && isModelReady) detectEmotions();
-  }, [cameraActive, isModelReady, detectEmotions]);
+    stopEmotionDetectionLoop();
+
+    if (cameraActive && isModelReady && !interviewEnded && !isPaused) {
+      emotionLoopTimeoutRef.current = window.setTimeout(() => {
+        void detectEmotions();
+      }, 0);
+    }
+
+    return () => stopEmotionDetectionLoop();
+  }, [cameraActive, isModelReady, interviewEnded, isPaused, detectEmotions, stopEmotionDetectionLoop]);
 
   // ────────────────────────────────────────────────
   //  Object Detection (cheating prevention)
   // ────────────────────────────────────────────────
   const detectObjects = useCallback(async () => {
-    if (
-      !videoRef.current ||
-      !objectDetector ||
-      !cameraActiveRef.current ||
-      interviewEndedRef.current
-    ) {
-      requestAnimationFrame(detectObjects);
-      return;
-    }
-
-    if (isPausedRef.current) {
-      requestAnimationFrame(detectObjects);
-      return;
-    }
-
-    const now = performance.now();
-    if (now - lastObjectDetectionTimeRef.current < OBJECT_DETECTION_INTERVAL_MS) {
-      requestAnimationFrame(detectObjects);
+    if (!videoRef.current || !objectDetector || !cameraActiveRef.current || interviewEndedRef.current || isPausedRef.current || !isObjectDetectorReady) {
       return;
     }
 
     if (isObjectDetectionRunningRef.current) {
-      requestAnimationFrame(detectObjects);
       return;
     }
 
     isObjectDetectionRunningRef.current = true;
-    lastObjectDetectionTimeRef.current = now;
 
     try {
       const results = await objectDetector.detectForVideo(
@@ -781,12 +791,29 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       isObjectDetectionRunningRef.current = false;
     }
 
-    requestAnimationFrame(detectObjects);
+    if (
+      cameraActiveRef.current &&
+      !interviewEndedRef.current &&
+      !isPausedRef.current &&
+      objectDetector
+    ) {
+      objectLoopTimeoutRef.current = window.setTimeout(() => {
+        void detectObjects();
+      }, OBJECT_DETECTION_INTERVAL_MS);
+    }
   }, [getSuspiciousDetections]);
 
   useEffect(() => {
-    if (cameraActive) detectObjects();
-  }, [cameraActive, detectObjects]);
+    stopObjectDetectionLoop();
+
+    if (cameraActive && !interviewEnded && !isPaused && isObjectDetectorReady) {
+      objectLoopTimeoutRef.current = window.setTimeout(() => {
+        void detectObjects();
+      }, 0);
+    }
+
+    return () => stopObjectDetectionLoop();
+  }, [cameraActive, interviewEnded, isPaused, isObjectDetectorReady, detectObjects, stopObjectDetectionLoop]);
 
   // ────────────────────────────────────────────────
   //  Pause / Resume logic

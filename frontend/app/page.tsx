@@ -82,7 +82,7 @@ export default function Home() {
           <div className="absolute -bottom-6 -left-6 h-28 w-28 rounded-full bg-sky-500/25 blur-2xl" />
           <div className="glass-panel animate-floaty overflow-hidden rounded-3xl p-2 shadow-2xl shadow-slate-900/10">
             <img
-              className="h-[420px] w-full rounded-[1.25rem] object-cover"
+              className="h-[260px] w-full rounded-[1.25rem] object-cover sm:h-[340px] lg:h-[420px]"
               src="https://media.istockphoto.com/id/1530973530/photo/software-development-concept.webp?a=1&b=1&s=612x612&w=0&k=20&c=NXxmootfVkI2C_JS5-5p06qMD_ngxJnH8BfLxnoQKP8="
               alt="Software developer workspace"
             />
