@@ -155,9 +155,13 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   );
   const [debugObjectRows, setDebugObjectRows] = useState<string[]>([]);
   const lastObjectAlertTimeRef = useRef<number>(0);
+  const lastMultiFaceAlertTimeRef = useRef<number>(0);
   const suspiciousFrameStreakRef = useRef<number>(0);
+  const multiFaceFrameStreakRef = useRef<number>(0);
   const lastDebugObjectUpdateRef = useRef<number>(0);
-  const OBJECT_ALERT_COOLDOWN_MS = 10000;
+  const OBJECT_ALERT_COOLDOWN_MS = 7000;
+  const MULTI_FACE_ALERT_COOLDOWN_MS = 8000;
+  const MULTI_FACE_SUSPICIOUS_CONSECUTIVE_FRAMES = 2;
   const FACE_DETECTION_INTERVAL_MS = 450;
   const OBJECT_DETECTION_INTERVAL_MS = 700;
   const FACE_DETECTION_MIN_INTERVAL_MS = 350;
@@ -166,8 +170,8 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const OBJECT_DETECTION_MAX_INTERVAL_MS = 1800;
   const OBJECT_SUSPICIOUS_MIN_SCORE = 0.5;
   const OBJECT_SUSPICIOUS_MIN_AREA_RATIO = 0.04;
-  const OBJECT_PHONE_MIN_SCORE = 0.2;
-  const OBJECT_PHONE_MIN_AREA_RATIO = 0.008;
+  const OBJECT_PHONE_MIN_SCORE = 0.16;
+  const OBJECT_PHONE_MIN_AREA_RATIO = 0.004;
   const OBJECT_TABLET_MIN_SCORE = 0.22;
   const OBJECT_TABLET_MIN_AREA_RATIO = 0.012;
   const OBJECT_HANDHELD_AID_MIN_SCORE = 0.36;
@@ -799,20 +803,33 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       }
 
       if (detections.length > 1) {
-        proctoringIncidentRef.current.multiFace += 1;
-        setIsPaused(true);
-        isPausedRef.current = true;
-        setShowMultiFaceModal(true);
-        setShowSuspiciousObjectModal(false);
-        setShowTabSwitchModal(false);
-        setMessages((p) => [
-          ...p,
-          {
-            text: "Multiple faces detected. Please ensure only you are visible before resuming.",
-            isBot: true,
-          },
-        ]);
+        multiFaceFrameStreakRef.current += 1;
+
+        const nowMs = Date.now();
+        const shouldAlertMultiFace =
+          !isPausedRef.current &&
+          multiFaceFrameStreakRef.current >= MULTI_FACE_SUSPICIOUS_CONSECUTIVE_FRAMES &&
+          nowMs - lastMultiFaceAlertTimeRef.current > MULTI_FACE_ALERT_COOLDOWN_MS;
+
+        if (shouldAlertMultiFace) {
+          proctoringIncidentRef.current.multiFace += 1;
+          setIsPaused(true);
+          isPausedRef.current = true;
+          setShowMultiFaceModal(true);
+          setShowSuspiciousObjectModal(false);
+          setShowTabSwitchModal(false);
+          setMessages((p) => [
+            ...p,
+            {
+              text: "Multiple faces detected. Please ensure only you are visible before resuming.",
+              isBot: true,
+            },
+          ]);
+          lastMultiFaceAlertTimeRef.current = nowMs;
+          multiFaceFrameStreakRef.current = 0;
+        }
       } else if (detections.length === 1) {
+        multiFaceFrameStreakRef.current = 0;
         const expr = detections[0].expressions;
         const smile = clampPercent(Math.round((expr.happy || 0) * 100));
         const stressRaw =
@@ -834,6 +851,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
           emotionSamplesRef.current.splice(0, emotionSamplesRef.current.length - 120);
         }
       } else {
+        multiFaceFrameStreakRef.current = 0;
         if (shouldUpdateEmotionUi) {
           setSmileScore((prev) => (prev === 0 ? prev : 0));
           setStressScore((prev) => (prev === 0 ? prev : 0));
@@ -1009,13 +1027,25 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
       const suspicious = getSuspiciousDetections(results.detections, video);
 
-      const hasBookLikeSuspicious = suspicious.some((d) => {
-        const label = (d.categories?.[0]?.categoryName || "").toLowerCase();
-        return /\bbook\b|\bnotebook\b|\bnotepad\b|\bdiary\b|\bjournal\b/.test(label);
-      });
-      const requiredSuspiciousFrames = hasBookLikeSuspicious
-        ? 2
-        : OBJECT_SUSPICIOUS_CONSECUTIVE_FRAMES;
+      const hasPhoneLikeSuspicious = suspicious.some((detection) =>
+        (detection.categories || []).some((category) => {
+          const label = (category.categoryName || "").toLowerCase();
+          return /cell phone|mobile phone|smartphone|\bphone\b|iphone|android|telephone handset|cellular telephone/.test(label);
+        }),
+      );
+
+      const hasBookLikeSuspicious = suspicious.some((detection) =>
+        (detection.categories || []).some((category) => {
+          const label = (category.categoryName || "").toLowerCase();
+          return /\bbook\b|\bnotebook\b|\bnotepad\b|\bdiary\b|\bjournal\b/.test(label);
+        }),
+      );
+
+      const requiredSuspiciousFrames = hasPhoneLikeSuspicious
+        ? 1
+        : hasBookLikeSuspicious
+          ? 2
+          : OBJECT_SUSPICIOUS_CONSECUTIVE_FRAMES;
 
       if (suspicious.length > 0) {
         suspiciousFrameStreakRef.current += 1;
