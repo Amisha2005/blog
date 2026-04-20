@@ -1,5 +1,6 @@
 const User = require("../model/usermodels");
 const bcrypt = require("bcryptjs");
+const { loginSchema } = require("../validation/auth-validation");
 
 const home = async (req, res) => {
   try {
@@ -40,11 +41,20 @@ const register = async (req, res, next) => {
 const login = async (req, res) => {
   // console.log(req.body)
   try {
-    const { email, password } = req.body;
+    const parsed = loginSchema.safeParse(req.body);
+    if (!parsed.success) {
+      const firstIssue = parsed.error.issues?.[0];
+      return res.status(400).json({
+        message: firstIssue?.message || "Please enter a valid email and password.",
+      });
+    }
 
-    const userExist = await User.findOne({ email });
+    const { email, password } = parsed.data;
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    const userExist = await User.findOne({ email: normalizedEmail });
     if (!userExist) {
-      return res.status(400).json({ message: "invalid credentiel" });
+      return res.status(401).json({ message: "Invalid email or password." });
     }
 
     // const user = await bcrypt.compare(password,userExist.password);
@@ -53,15 +63,16 @@ const login = async (req, res) => {
 
     if (user) {
       res.status(200).json({
-        message: "login successful",
+        message: "Login successful.",
         token: await userExist.generateToken(),
         userId: userExist._id.toString(),
       });
     } else {
-      res.status(401).json({ message: "invalid email or password" });
+      res.status(401).json({ message: "Invalid email or password." });
     }
   } catch (error) {
-    res.status(500).json("internal server error");
+    console.error("Login error:", error);
+    res.status(500).json({ message: "Unable to log in right now. Please try again." });
   }
 };
 

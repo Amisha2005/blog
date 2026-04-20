@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { AlertTriangle, Camera, MonitorSmartphone, Mic } from "lucide-react";
 
 type InterviewSetupClientProps = {
   initialTopic: string;
@@ -214,6 +215,31 @@ export default function InterviewSetupClient({
                   <SelectItem value="60">60 minutes</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+          </div>
+
+          <div className="mt-8 rounded-2xl border border-amber-300/40 bg-amber-50/80 p-5 text-sm text-slate-800 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-50">
+            <div className="flex items-center gap-2 text-base font-semibold">
+              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-300" />
+              Before You Start
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <div className="flex items-start gap-3 rounded-xl bg-white/60 p-3 dark:bg-white/5">
+                <Camera className="mt-0.5 h-4 w-4 text-sky-600 dark:text-sky-300" />
+                <p>Keep only one face visible and stay clearly in frame during the interview.</p>
+              </div>
+              <div className="flex items-start gap-3 rounded-xl bg-white/60 p-3 dark:bg-white/5">
+                <MonitorSmartphone className="mt-0.5 h-4 w-4 text-sky-600 dark:text-sky-300" />
+                <p>Do not use phone, notes, calculator, tablet, or other extra devices while answering.</p>
+              </div>
+              <div className="flex items-start gap-3 rounded-xl bg-white/60 p-3 dark:bg-white/5">
+                <Mic className="mt-0.5 h-4 w-4 text-sky-600 dark:text-sky-300" />
+                <p>Allow camera and microphone access before starting so the session can run smoothly.</p>
+              </div>
+              <div className="flex items-start gap-3 rounded-xl bg-white/60 p-3 dark:bg-white/5">
+                <AlertTriangle className="mt-0.5 h-4 w-4 text-sky-600 dark:text-sky-300" />
+                <p>Tab switching, multiple faces, or suspicious objects may pause the interview automatically.</p>
+              </div>
             </div>
           </div>
 
