@@ -12,7 +12,13 @@ const adminRoutes = require("./Router/admin");// In-memory store (restart server
 const topicRoutes = require("./Router/topicRoutes");
 const InterviewResult = require("./model/interviewResult");
 
-const corsOrigins = (process.env.CORS_ORIGINS || "http://localhost:3000" , "https://virtualinterview.vercel.app")
+const defaultCorsOrigins = [
+  "http://localhost:3000",
+  "https://virtualinterview.vercel.app",
+  "https://virtual-interview.vercel.app",
+];
+
+const corsOrigins = (process.env.CORS_ORIGINS || defaultCorsOrigins.join(","))
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
