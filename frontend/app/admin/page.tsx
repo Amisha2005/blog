@@ -9,7 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Users, TrendingUp, Shield, Trophy, Plus } from "lucide-react";
+import { Users, TrendingUp, Shield, Trophy, Plus, Trash2 } from "lucide-react";
 import { useAuth } from "@/app/Auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,6 +54,7 @@ interface InterviewTopic {
 }
 
 interface LeaderboardEntry {
+  _id: string;
   candidateName: string;
   topic: string;
   finalScore: number;
@@ -88,6 +89,7 @@ export default function AdminDashboard() {
   const [selectedTopic, setSelectedTopic] = useState<string>("");
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+  const [deletingLeaderboardId, setDeletingLeaderboardId] = useState<string | null>(null);
 
   const isDemoTopic = (topic?: InterviewTopic) => {
     if (!topic) return false;
@@ -181,6 +183,35 @@ export default function AdminDashboard() {
       setLeaderboard([]);
     } finally {
       setLeaderboardLoading(false);
+    }
+  };
+
+  const handleDeleteLeaderboardEntry = async (entry: LeaderboardEntry) => {
+    if (!authorizationToken) return;
+    const confirmed = window.confirm(
+      `Delete leaderboard record for ${entry.candidateName} in ${selectedTopic}?`,
+    );
+    if (!confirmed) return;
+
+    setDeletingLeaderboardId(entry._id);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/leaderboard/${entry._id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: authorizationToken,
+        },
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to delete leaderboard record");
+      }
+
+      await fetchLeaderboard(selectedTopic);
+    } catch (error) {
+      console.error("Failed to delete leaderboard record", error);
+      alert("Could not delete this leaderboard record.");
+    } finally {
+      setDeletingLeaderboardId(null);
     }
   };
 
@@ -327,11 +358,12 @@ export default function AdminDashboard() {
                       <th className="text-center py-3">Overall</th>
                       <th className="text-center py-3">Presence</th>
                       <th className="text-center py-3">Final Score</th>
+                      <th className="text-center py-3">Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {leaderboard.map((entry, index) => (
-                      <tr key={index} className="border-b border-border/50 transition hover:bg-muted/40">
+                      <tr key={entry._id || index} className="border-b border-border/50 transition hover:bg-muted/40">
                         <td className="py-3">
                           <span className="font-bold">#{index + 1}</span>
                         </td>
@@ -341,6 +373,19 @@ export default function AdminDashboard() {
                         <td className="py-3 text-center">{entry.presenceScore?.toFixed(1) || "N/A"}</td>
                         <td className="py-3 text-center font-bold text-green-600">
                           {entry.finalScore?.toFixed(1) || "N/A"}
+                        </td>
+                        <td className="py-3 text-center">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => handleDeleteLeaderboardEntry(entry)}
+                            disabled={deletingLeaderboardId === entry._id}
+                            className="rounded-lg"
+                          >
+                            <Trash2 className="mr-1 h-4 w-4" />
+                            {deletingLeaderboardId === entry._id ? "Deleting..." : "Delete"}
+                          </Button>
                         </td>
                       </tr>
                     ))}

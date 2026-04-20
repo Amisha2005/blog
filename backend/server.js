@@ -653,6 +653,7 @@ app.get("/api/leaderboard", async (req, res) => {
       topic,
       total: rows.length,
       leaderboard: rows.map((row, index) => ({
+        _id: String(row._id),
         rank: index + 1,
         candidateName: row.candidateName || "Candidate",
         difficulty: row.difficulty || "Medium",

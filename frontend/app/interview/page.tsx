@@ -1,24 +1,19 @@
-import { redirect } from "next/navigation";
+"use client";
+
+import InterviewSetupClient from "./setup/InterviewSetupClient";
 
 type InterviewPageProps = {
-  searchParams: Promise<{
+  searchParams?: {
     topic?: string;
     source?: string;
-  }>;
+  };
 };
 
-export default async function InterviewPage({ searchParams }: InterviewPageProps) {
-  const paramsObj = await searchParams;
-  const topic = paramsObj?.topic;
-  const source = paramsObj?.source;
-
-  if (topic) {
-    const params = new URLSearchParams({
-      topic,
-      ...(source ? { source } : {}),
-    });
-    redirect(`/interview/setup?${params.toString()}`);
-  }
-
-  redirect("/interview/setup");
+export default function InterviewPage({ searchParams }: InterviewPageProps) {
+  return (
+    <InterviewSetupClient
+      initialTopic={searchParams?.topic ?? ""}
+      initialSource={searchParams?.source ?? "admin"}
+    />
+  );
 }
