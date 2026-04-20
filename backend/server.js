@@ -12,10 +12,12 @@ const adminRoutes = require("./Router/admin");// In-memory store (restart server
 const topicRoutes = require("./Router/topicRoutes");
 const InterviewResult = require("./model/interviewResult");
 
-const corsOrigins = (process.env.CORS_ORIGINS || "http://localhost:3000" , "https://virtualinterview.vercel.app")
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean);
+// const corsOrigins = (process.env.CORS_ORIGINS || "http://localhost:3000" , "https://virtualinterview.vercel.app")
+//   .split(",")
+//   .map((origin) => origin.trim())
+//   .filter(Boolean);
+
+const corsOrigins=process.env.CORS_ORIGINS.split(",")
 
 const corsOptions = {
   origin: corsOrigins,

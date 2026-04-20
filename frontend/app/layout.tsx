@@ -7,6 +7,8 @@ import { ThemeProvider } from "@/app/theme-provider";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { AuthProvider } from "./Auth";
+import SessionWrapper from "@/components/SessionWrapper";
+// import { SessionProvider } from "next-auth/react";
 
 const manrope = Manrope({
   subsets: ["latin"],
@@ -32,6 +34,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
+    <SessionWrapper>
       <body className={`${manrope.variable} ${spaceGrotesk.variable} antialiased`}> 
         <ThemeProvider
           attribute="class"
@@ -48,6 +51,7 @@ export default function RootLayout({
           </AuthProvider>
         </ThemeProvider>
       </body>
+      </SessionWrapper>
     </html>
   );
 }

@@ -8,11 +8,74 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import Link from "next/link";
 import { Github, Chrome, Mail, Lock } from "lucide-react";
-import { useState } from "react";
+import { useState,useEffect } from "react";
 import { useAuth } from "../Auth";
+import { signIn, useSession } from "next-auth/react";
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "https://virtual-interview-32pw.onrender.com";
 const URL = `${API_BASE_URL}/api/auth/login`;
 export default function LoginPage() {
+
+const { data: session, status } = useSession();
+console.log("session in login page", session);
+const {storeTokenInLS}=useAuth();
+
+useEffect(() => {
+  // NextAuth already exchanges OAuth -> backend token in `app/api/auth/[...nextauth]/route.ts`
+  // and exposes it as `session.backendToken`. Persist it for the rest of the app.
+  if (status !== "authenticated") return;
+  if (typeof window === "undefined") return;
+  if (localStorage.getItem("token")) return;
+  if (session?.backendToken) {
+    storeTokenInLS(session.backendToken);
+    return;
+  }
+
+  /*
+  const sendToBackend = async () => {
+    if (session?.user && !localStorage.getItem("token") ) {
+      try {
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/auth/oauth`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              email: session.user.email,
+              username: session.user.name,
+            }),
+          }
+        );
+
+        const data = await res.json();
+
+        if (res.ok) {
+          storeTokenInLS(data.token); // 🔥 SAME as email login
+          // router.push("/account");
+        }
+      } catch (err) {
+        console.log("OAuth backend error", err);
+      }
+    }
+  };
+
+  sendToBackend();
+  */
+}, [status, session, storeTokenInLS]);
+
+const handleGithubLogin=async() => {
+  await signIn("github",{
+    callbackUrl:"/account"
+  })
+}
+const handleGoogleLogin=async() => {
+  await signIn("google",{
+    callbackUrl:"/account"
+  })
+}
+
 const router = useRouter(); // ← Add this line
   const[user,setUser]=useState({
     email:"",
@@ -88,14 +151,14 @@ const router = useRouter(); // ← Add this line
           <CardContent className="relative z-10 space-y-6 pb-10 px-8">
             {/* Social Login */}
             <div className="grid grid-cols-2 gap-4">
-              <Button
+              <Button onClick={handleGoogleLogin}
                 variant="outline"
                 className="w-full h-12 font-medium border-gray-300 dark:border-white/20 bg-gray-50/50 dark:bg-white/5 hover:bg-gray-100 dark:hover:bg-white/10"
               >
                 <Chrome className="mr-2 h-5 w-5" />
                 Google
               </Button>
-              <Button
+              <Button onClick={handleGithubLogin}
                 variant="outline"
                 className="w-full h-12 font-medium border-gray-300 dark:border-white/20 bg-gray-50/50 dark:bg-white/5 hover:bg-gray-100 dark:hover:bg-white/10"
               >

@@ -76,4 +76,30 @@ const user = async (req, res) => {
   }
 };
 
-module.exports = { home, register, login, user };
+const oauthLogin = async (req, res) => {
+  try {
+    const { email, username, provider } = req.body;
+
+    let user = await User.findOne({ email });
+
+    // If user doesn't exist → create
+    if (!user) {
+      user = await User.create({
+        username,
+        email,
+        password: "oauth_user", // dummy (not used)
+        provider,
+      });
+    }
+
+    res.status(200).json({
+      message: "OAuth login successful",
+      token: await user.generateToken(),
+      userId: user._id.toString(),
+    });
+  } catch (error) {
+    res.status(500).json({ message: "OAuth login failed" });
+  }
+};  
+
+module.exports = { home, register, login, user ,oauthLogin};

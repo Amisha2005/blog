@@ -1,6 +1,7 @@
 // context/AuthContext.tsx
 "use client";
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, ReactNode, useRef } from "react";
+import { signOut, useSession } from "next-auth/react";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "https://virtual-interview-32pw.onrender.com";
 
@@ -36,6 +37,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const { data: session, status } = useSession();
+  const logoutInProgressRef = useRef(false);
 
   // Load token from localStorage on mount (client-side only)
   useEffect(() => {
@@ -57,10 +60,37 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setToken(serverToken);
   };
 
+  // If user logged in via NextAuth (GitHub/Google), persist backend token for the rest of the app.
+  useEffect(() => {
+    if (logoutInProgressRef.current) return;
+    if (status !== "authenticated") return;
+    if (!session?.backendToken) return;
+    if (token) return;
+    const existing = localStorage.getItem("token");
+    if (existing) {
+      setToken(existing);
+      return;
+    }
+    storeTokenInLS(session.backendToken);
+  }, [status, session?.backendToken, token]);
+
+  // Once NextAuth finishes logging out, allow token sync again.
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      logoutInProgressRef.current = false;
+    }
+  }, [status]);
+
   const LogoutUser = () => {
+    // Prevent the session->token sync effect from re-adding the token while signOut() is in-flight.
+    logoutInProgressRef.current = true;
     setToken(null);
     setUser(null);
     localStorage.removeItem("token");
+    // Also clear any NextAuth session so OAuth users don't get "auto-logged-in" again.
+    signOut({ redirect: false }).catch(() => {
+      // ignore
+    });
   };
 
   const userAuthentication = async () => {
