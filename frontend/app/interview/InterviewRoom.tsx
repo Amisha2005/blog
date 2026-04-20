@@ -185,6 +185,8 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
   const currentTimeRef = useRef<number | null>(null);
 
+  const clampPercent = (value: number) => Math.max(0, Math.min(100, value));
+
   useEffect(() => {
     cameraActiveRef.current = cameraActive;
   }, [cameraActive]);
@@ -618,14 +620,14 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         ]);
       } else if (detections.length === 1) {
         const expr = detections[0].expressions;
-        const smile = Math.round((expr.happy || 0) * 100);
+        const smile = clampPercent(Math.round((expr.happy || 0) * 100));
         const stressRaw =
           (expr.angry || 0) +
           (expr.sad || 0) +
           (expr.fearful || 0) +
           (expr.disgusted || 0);
-        const stress = Math.round(stressRaw * 25);
-        const conf = Math.round((expr.neutral || 0) * 100 - stress * 0.4);
+        const stress = clampPercent(Math.round(stressRaw * 25));
+        const conf = clampPercent(Math.round((expr.neutral || 0) * 100 - stress * 0.4));
 
         setSmileScore(smile);
         setStressScore(stress);
@@ -692,6 +694,8 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const persistInterviewContext = useCallback(() => {
     const activeTopic = cleanTopic || customTopic || manualTopic.trim() || "General";
     const presence = calculateFinalPresenceScore();
+
+    setFinalScore(presence);
 
     localStorage.setItem("presenceScore", String(presence));
     localStorage.setItem(
