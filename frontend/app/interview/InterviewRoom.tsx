@@ -369,6 +369,26 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     stopObjectDetectionLoop();
   }, [stopEmotionDetectionLoop, stopObjectDetectionLoop]);
 
+  const pauseInterviewForViolation = useCallback(
+    (
+      type: "multiFace" | "suspiciousObject" | "tabSwitch",
+      message: string,
+      labels: string[] = [],
+    ) => {
+      stopDetectionLoops();
+      setShowMultiFaceModal(type === "multiFace");
+      setShowSuspiciousObjectModal(type === "suspiciousObject");
+      setShowTabSwitchModal(type === "tabSwitch");
+      if (type === "suspiciousObject") {
+        setSuspiciousObjectsList(labels);
+      }
+      setIsPaused(true);
+      isPausedRef.current = true;
+      setMessages((prev) => [...prev, { text: message, isBot: true }]);
+    },
+    [stopDetectionLoops],
+  );
+
   const runTimerInterval = () => {
     if (timerRef.current) clearInterval(timerRef.current);
 
@@ -928,18 +948,10 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
         if (shouldAlertMultiFace) {
           proctoringIncidentRef.current.multiFace += 1;
-          setIsPaused(true);
-          isPausedRef.current = true;
-          setShowMultiFaceModal(true);
-          setShowSuspiciousObjectModal(false);
-          setShowTabSwitchModal(false);
-          setMessages((p) => [
-            ...p,
-            {
-              text: "Multiple faces detected. Please ensure only you are visible before resuming.",
-              isBot: true,
-            },
-          ]);
+          pauseInterviewForViolation(
+            "multiFace",
+            "Multiple faces detected. Please ensure only you are visible before resuming.",
+          );
           lastMultiFaceAlertTimeRef.current = nowMs;
           multiFaceFrameStreakRef.current = 0;
         }
@@ -1004,7 +1016,12 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     ) {
       scheduleEmotionDetection();
     }
-  }, [detectFacesForMode, maybeRunFaceFallback, scheduleEmotionDetection]);
+  }, [
+    detectFacesForMode,
+    maybeRunFaceFallback,
+    pauseInterviewForViolation,
+    scheduleEmotionDetection,
+  ]);
 
   const calculateFinalPresenceScore = () => {
     const emotionSamples = emotionSamplesRef.current;
@@ -1199,17 +1216,11 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
               detectionsForAlert.map((d) => getSuspiciousLabel(d)),
             ),
           ];
-          setSuspiciousObjectsList(labels);
-          setShowSuspiciousObjectModal(true);
-          setIsPaused(true);
-          isPausedRef.current = true;
-          setMessages((p) => [
-            ...p,
-            {
-              text: `Suspicious object(s) detected: ${labels.join(", ")}. Please remove them.`,
-              isBot: true,
-            },
-          ]);
+          pauseInterviewForViolation(
+            "suspiciousObject",
+            `Suspicious object(s) detected: ${labels.join(", ")}. Please remove them.`,
+            labels,
+          );
           lastObjectAlertTimeRef.current = now;
           suspiciousFrameStreakRef.current = 0;
           phoneEvidenceHitsRef.current = [];
@@ -1248,6 +1259,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     getSuspiciousDetections,
     getSuspiciousLabel,
     isObjectDetectorReady,
+    pauseInterviewForViolation,
     scheduleObjectDetection,
   ]);
 
@@ -1279,18 +1291,10 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       if (isPausedRef.current) return;
 
       if (document.visibilityState === "hidden" || !document.hasFocus()) {
-        setShowMultiFaceModal(false);
-        setShowSuspiciousObjectModal(false);
-        setShowTabSwitchModal(true);
-        setIsPaused(true);
-        isPausedRef.current = true;
-        setMessages((prev) => [
-          ...prev,
-          {
-            text: "Tab switch or window focus loss detected. Return to the interview tab to continue.",
-            isBot: true,
-          },
-        ]);
+        pauseInterviewForViolation(
+          "tabSwitch",
+          "Tab switch or window focus loss detected. Return to the interview tab to continue.",
+        );
       }
     };
 
@@ -1301,7 +1305,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       window.removeEventListener("blur", handleDisturbance);
       document.removeEventListener("visibilitychange", handleDisturbance);
     };
-  }, []);
+  }, [pauseInterviewForViolation]);
 
   // ────────────────────────────────────────────────
   //  Initial message when topic is passed via props
