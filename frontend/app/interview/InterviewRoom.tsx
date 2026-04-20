@@ -163,10 +163,13 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const OBJECT_DETECTION_MAX_INTERVAL_MS = 1800;
   const OBJECT_SUSPICIOUS_MIN_SCORE = 0.5;
   const OBJECT_SUSPICIOUS_MIN_AREA_RATIO = 0.04;
+  const OBJECT_PHONE_MIN_SCORE = 0.35;
+  const OBJECT_PHONE_MIN_AREA_RATIO = 0.008;
   const OBJECT_LAPTOP_MIN_SCORE = 0.72;
   const OBJECT_LAPTOP_MIN_AREA_RATIO = 0.1;
   const OBJECT_USER_LAPTOP_BOTTOM_ZONE = 0.7;
   const OBJECT_SUSPICIOUS_CONSECUTIVE_FRAMES = 3;
+  const EMOTION_UI_UPDATE_INTERVAL_MS = 500;
   const emotionLoopTimeoutRef = useRef<any>(null);
   const objectLoopTimeoutRef = useRef<any>(null);
   const dynamicEmotionIntervalRef = useRef<number>(FACE_DETECTION_INTERVAL_MS);
@@ -189,6 +192,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const isPausedRef = useRef(false);
   const proctoringIncidentRef = useRef({ multiFace: 0, suspiciousObject: 0 });
   const lastInterviewQuestionRef = useRef<string>("");
+  const lastEmotionUiUpdateRef = useRef<number>(0);
 
   const currentTimeRef = useRef<number | null>(null);
 
@@ -458,7 +462,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         }
 
         if (isPhone) {
-          return score >= OBJECT_SUSPICIOUS_MIN_SCORE && areaRatio >= 0.015;
+          return score >= OBJECT_PHONE_MIN_SCORE && areaRatio >= OBJECT_PHONE_MIN_AREA_RATIO;
         }
 
         return false;
@@ -543,7 +547,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
       if (lastInterviewQuestionRef.current.trim()) {
         resumedMessages.push({
-          text: `Question again: ${lastInterviewQuestionRef.current}`,
+          text: `Let's continue from where we paused. ${lastInterviewQuestionRef.current}`,
           isBot: true,
         });
       }
@@ -668,7 +672,13 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         .withFaceLandmarks()
         .withFaceExpressions();
 
-      setFacesDetected(detections.length);
+      const now = performance.now();
+      const shouldUpdateEmotionUi =
+        now - lastEmotionUiUpdateRef.current >= EMOTION_UI_UPDATE_INTERVAL_MS;
+
+      if (shouldUpdateEmotionUi) {
+        setFacesDetected((prev) => (prev === detections.length ? prev : detections.length));
+      }
 
       if (detections.length > 1) {
         proctoringIncidentRef.current.multiFace += 1;
@@ -695,18 +705,26 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         const stress = clampPercent(Math.round(stressRaw * 25));
         const conf = clampPercent(Math.round((expr.neutral || 0) * 100 - stress * 0.4));
 
-        setSmileScore(smile);
-        setStressScore(stress);
-        setConfidenceScore(conf);
+        if (shouldUpdateEmotionUi) {
+          setSmileScore((prev) => (prev === smile ? prev : smile));
+          setStressScore((prev) => (prev === stress ? prev : stress));
+          setConfidenceScore((prev) => (prev === conf ? prev : conf));
+        }
 
-        emotionSamplesRef.current = [
-          ...emotionSamplesRef.current.slice(-119),
-          { smile, stress, conf, timestamp: Date.now() },
-        ];
+        emotionSamplesRef.current.push({ smile, stress, conf, timestamp: Date.now() });
+        if (emotionSamplesRef.current.length > 120) {
+          emotionSamplesRef.current.splice(0, emotionSamplesRef.current.length - 120);
+        }
       } else {
-        setSmileScore(0);
-        setStressScore(0);
-        setConfidenceScore(30);
+        if (shouldUpdateEmotionUi) {
+          setSmileScore((prev) => (prev === 0 ? prev : 0));
+          setStressScore((prev) => (prev === 0 ? prev : 0));
+          setConfidenceScore((prev) => (prev === 30 ? prev : 30));
+        }
+      }
+
+      if (shouldUpdateEmotionUi) {
+        lastEmotionUiUpdateRef.current = now;
       }
     } catch (err) {
       console.error("Emotion detection error", err);
@@ -1332,11 +1350,13 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       const data = await res.json();
 
       const replyText = String(data.reply || "").trim();
-      if (
-        replyText &&
-        replyText.includes("?") &&
-        !replyText.toLowerCase().includes("interview complete")
-      ) {
+      const normalizedReply = replyText.toLowerCase();
+      const isCompletionReply =
+        normalizedReply.includes("interview complete") ||
+        normalizedReply.includes("interview ended") ||
+        normalizedReply.includes("ended");
+
+      if (replyText && !isCompletionReply) {
         lastInterviewQuestionRef.current = replyText;
       }
 
