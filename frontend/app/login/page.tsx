@@ -81,7 +81,7 @@ const router = useRouter(); // ← Add this line
     email:"",
     password:""
   });
-  const {storeTokenInLS}=useAuth();
+  // const {storeTokenInLS}=useAuth();
    const handleInput = (e) => {
     let name = e.target.name;
     let value = e.target.value;
