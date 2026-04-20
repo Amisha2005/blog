@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -54,20 +54,6 @@ export default function InterviewSetupClient({
   initialSource,
 }: InterviewSetupClientProps) {
   const router = useRouter();
-  const [isLaptopDevice, setIsLaptopDevice] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    const evaluateDevice = () => {
-      const isSmallScreen = window.matchMedia("(max-width: 1023px)").matches;
-      const hasCoarsePointer = window.matchMedia("(pointer: coarse)").matches;
-      setIsLaptopDevice(!(isSmallScreen || hasCoarsePointer));
-    };
-
-    evaluateDevice();
-    window.addEventListener("resize", evaluateDevice);
-
-    return () => window.removeEventListener("resize", evaluateDevice);
-  }, []);
 
   const topicSource: "demo" | "admin" = initialSource === "demo" ? "demo" : "admin";
 
@@ -142,30 +128,6 @@ export default function InterviewSetupClient({
 
     router.push(`/interview/room?${params.toString()}`);
   };
-
-  if (isLaptopDevice === false) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-purple-50 dark:from-slate-950 dark:to-purple-950/40 flex items-center justify-center px-4">
-        <Card className="max-w-xl rounded-3xl border border-red-200/60 bg-white/95 p-8 text-center shadow-2xl dark:border-red-500/20 dark:bg-black/80 md:p-10">
-          <h1 className="text-3xl font-bold text-red-600 dark:text-red-400">Laptop Required</h1>
-          <p className="mt-4 text-base leading-7 text-muted-foreground">
-            The interview only runs on laptops or desktops. Please reopen this website on a laptop to continue the interview.
-          </p>
-          <p className="mt-3 text-sm text-muted-foreground">
-            Mobile devices are blocked because camera, timer, and proctoring checks are not reliable enough on small screens.
-          </p>
-        </Card>
-      </div>
-    );
-  }
-
-  if (isLaptopDevice === null) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-purple-50 dark:from-slate-950 dark:to-purple-950/40 flex items-center justify-center px-4">
-        <p className="text-muted-foreground">Checking device compatibility...</p>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-purple-50 dark:from-slate-950 dark:to-purple-950/40">

@@ -73,7 +73,6 @@ const normalizeInterviewTopic = (rawTopic: string) => {
 };
 
 export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
-  const [isLaptopDevice, setIsLaptopDevice] = useState<boolean | null>(null);
   const searchParams = useSearchParams();
   const difficultyParam = searchParams.get("difficulty");
   const durationParam = searchParams.get("duration");
@@ -106,19 +105,6 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const [showDuration, setShowDuration] = useState<boolean>(false);
   const [selectedDuration, setSelectedDuration] = useState<number | null>(null); // minutes
   const [manualTopic, setManualTopic] = useState("");
-
-  useEffect(() => {
-    const evaluateDevice = () => {
-      const isSmallScreen = window.matchMedia("(max-width: 1023px)").matches;
-      const hasCoarsePointer = window.matchMedia("(pointer: coarse)").matches;
-      setIsLaptopDevice(!(isSmallScreen || hasCoarsePointer));
-    };
-
-    evaluateDevice();
-    window.addEventListener("resize", evaluateDevice);
-
-    return () => window.removeEventListener("resize", evaluateDevice);
-  }, []);
 
   // Camera & Media states
   const [cameraActive, setCameraActive] = useState<boolean>(false);
@@ -1380,44 +1366,20 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const activeTopicHeading = cleanTopic || customTopic || manualTopic.trim() || "Interview";
   const activeDifficultyHeading = selectedDifficulty || "Medium";
 
-  if (isLaptopDevice === null) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-purple-50 dark:from-slate-950 dark:to-purple-950/40 flex items-center justify-center px-4">
-        <p className="text-muted-foreground">Checking device compatibility...</p>
-      </div>
-    );
-  }
-
-  if (isLaptopDevice === false) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-purple-50 dark:from-slate-950 dark:to-purple-950/40 flex items-center justify-center px-4">
-        <Card className="max-w-xl rounded-3xl border border-red-200/60 bg-white/95 p-8 text-center shadow-2xl dark:border-red-500/20 dark:bg-black/80 md:p-10">
-          <h1 className="text-3xl font-bold text-red-600 dark:text-red-400">Laptop Required</h1>
-          <p className="mt-4 text-base leading-7 text-muted-foreground">
-            The interview can only be conducted on laptops or desktops. Please reopen this website on a laptop to continue.
-          </p>
-          <p className="mt-3 text-sm text-muted-foreground">
-            Mobile devices are not supported for the live interview, timer, camera, and proctoring flow.
-          </p>
-        </Card>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-purple-50 dark:from-slate-950 dark:to-purple-950/40">
-      <div className="container max-w-7xl mx-auto p-6">
-        <div className="flex justify-between items-center mb-6">
-          <div className="flex items-center gap-4">
-            <Badge className="px-5 py-2 text-lg bg-green-100 text-green-700 dark:bg-green-900/50">
+      <div className="container mx-auto max-w-7xl px-4 py-4 pb-24 sm:px-6 lg:px-8">
+        <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+            <Badge className="px-4 py-2 text-sm bg-green-100 text-green-700 dark:bg-green-900/50 sm:px-5 sm:text-lg">
               <div className="w-3 h-3 bg-green-500 rounded-full mr-2 animate-pulse" />
               Live Interview
             </Badge>
-            <h2 className="text-2xl font-bold">{`${activeTopicHeading} (${activeDifficultyHeading})`}</h2>
+            <h2 className="text-xl font-bold sm:text-2xl">{`${activeTopicHeading} (${activeDifficultyHeading})`}</h2>
           </div>
 
-          <div className="flex items-center gap-6">
-            <div className="flex gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4 lg:gap-6">
+            <div className="flex flex-wrap gap-3">
               <Button
                 variant="outline"
                 size="lg"
@@ -1466,15 +1428,15 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
           </div>
         )}
         {showInstructions && cleanTopic && (
-          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-6">
-            <Card className="max-w-3xl w-full max-h-[90vh] overflow-y-auto bg-white/95 dark:bg-slate-900/95 border border-purple-500/30 rounded-3xl shadow-2xl p-10">
-              <h2 className="text-3xl font-bold text-center mb-8 bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm sm:p-6">
+            <Card className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-3xl border border-purple-500/30 bg-white/95 p-6 shadow-2xl dark:bg-slate-900/95 sm:p-10">
+              <h2 className="mb-6 bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-center text-2xl font-bold text-transparent sm:mb-8 sm:text-3xl">
                 Important Interview Instructions & Rules
               </h2>
 
-              <div className="space-y-8 text-lg leading-relaxed">
+              <div className="space-y-6 text-base leading-relaxed sm:space-y-8 sm:text-lg">
                 <div>
-                  <h3 className="text-xl font-semibold mb-3 text-purple-700 dark:text-purple-400">
+                  <h3 className="mb-3 text-lg font-semibold text-purple-700 dark:text-purple-400 sm:text-xl">
                     Welcome to your AI-Powered Interview
                   </h3>
                   <p>
@@ -1489,7 +1451,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                 </div>
 
                 <div>
-                  <h3 className="text-xl font-semibold mb-3 text-purple-700 dark:text-purple-400">
+                  <h3 className="mb-3 text-lg font-semibold text-purple-700 dark:text-purple-400 sm:text-xl">
                     What You Need to Do
                   </h3>
                   <ul className="list-disc pl-6 space-y-2">
@@ -1508,7 +1470,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                 </div>
 
                 <div>
-                  <h3 className="text-xl font-semibold mb-3 text-purple-700 dark:text-purple-400">
+                  <h3 className="mb-3 text-lg font-semibold text-purple-700 dark:text-purple-400 sm:text-xl">
                     Rules & Prohibited Actions
                   </h3>
                   <ul className="list-disc pl-6 space-y-2 text-red-600 dark:text-red-400 font-medium">
@@ -1530,7 +1492,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                 </div>
 
                 <div>
-                  <h3 className="text-xl font-semibold mb-3 text-purple-700 dark:text-purple-400">
+                  <h3 className="mb-3 text-lg font-semibold text-purple-700 dark:text-purple-400 sm:text-xl">
                     How Scoring Works
                   </h3>
                   <ul className="list-disc pl-6 space-y-2">
@@ -1543,15 +1505,15 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                   </ul>
                 </div>
 
-                <div className="text-center mt-10">
-                  <p className="text-lg font-medium mb-6">
+                <div className="mt-8 text-center sm:mt-10">
+                  <p className="mb-6 text-base font-medium sm:text-lg">
                     By continuing, you agree to follow all rules and allow
                     real-time monitoring.
                   </p>
 
                   <Button
                     size="lg"
-                    className="px-12 py-7 text-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 shadow-xl"
+                    className="px-8 py-6 text-lg bg-gradient-to-r from-purple-600 to-pink-600 shadow-xl hover:from-purple-700 hover:to-pink-700 sm:px-12 sm:py-7 sm:text-xl"
                     onClick={() => setShowInstructions(false)}
                   >
                     I Understand & Proceed
@@ -1563,12 +1525,12 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         )}
         {/* ─── Configuration Screen ─── shown until interview starts ─── */}
         {!interviewStarted && !skipSetupScreen && (
-          <Card className="mb-10 p-8 bg-white/90 dark:bg-black/70 backdrop-blur-xl border border-gray-200/50 dark:border-white/10 rounded-3xl shadow-2xl max-w-4xl mx-auto">
-            <h3 className="text-2xl font-bold text-center mb-8 bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+          <Card className="mx-auto mb-10 max-w-4xl rounded-3xl border border-gray-200/50 bg-white/90 p-6 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-black/70 sm:p-8">
+            <h3 className="mb-8 bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-center text-2xl font-bold text-transparent">
               Let's set up your interview
             </h3>
 
-            <div className="grid md:grid-cols-2 gap-8 mb-10">
+            <div className="mb-10 grid gap-6 lg:grid-cols-2">
               <div>
                 <label className="block text-base font-medium mb-3">
                   Difficulty Level
@@ -1627,7 +1589,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
               )}
             </div>
 
-            <div className="mt-8 grid gap-6 md:grid-cols-2">
+            <div className="mt-8 grid gap-6 lg:grid-cols-2">
               <div>
                 <label className="mb-2 block text-base font-medium">
                   Topic
@@ -1686,9 +1648,9 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
           </Card>
         )}
 
-        <div className="flex gap-6">
+        <div className="flex flex-col gap-6 xl:flex-row">
           {/* LEFT: Chat */}
-          <Card className="relative flex-[0.7] h-[85vh] flex flex-col bg-white/90 dark:bg-black/70 backdrop-blur-xl border border-gray-200/50 dark:border-white/10">
+          <Card className="relative flex min-h-[36rem] flex-col bg-white/90 backdrop-blur-xl border border-gray-200/50 dark:bg-black/70 dark:border-white/10 xl:h-[85vh] xl:min-h-0 xl:flex-[0.68]">
             {/* {cameraActive && (
               <div
                 className="absolute top-3 right-3 bg-black/65 text-white text-sm px-3 py-2 rounded-md font-mono z-10 shadow"
@@ -1708,7 +1670,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                 </div>
               </div>
             )} */}
-            <div className="p-6 border-b">
+            <div className="border-b p-4 sm:p-6">
               <div className="flex items-center gap-4">
                 <Avatar>
                   <AvatarFallback className="bg-gradient-to-br from-purple-600 to-pink-600 text-white text-xl font-bold">
@@ -1727,7 +1689,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
             <div
               ref={chatScrollRef}
               onScroll={handleChatScroll}
-              className="flex-1 overflow-y-auto px-6 py-4 space-y-4"
+              className="flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-6"
             >
               {messages.map((msg, index) => (
                 <div
@@ -1745,7 +1707,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                     className={`max-w-[70%] ${msg.isBot
                       ? "bg-gray-100 dark:bg-white/10"
                       : "bg-gradient-to-r from-purple-600 to-pink-600 text-white"
-                      } px-4 py-2 rounded-2xl shadow-lg text-base whitespace-pre-line`}
+                      } px-4 py-2 rounded-2xl shadow-lg text-base whitespace-pre-line sm:max-w-[72%]`}
                   >
                     {msg.text}
                   </div>
@@ -1760,7 +1722,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
               ))}
             </div>
             {showNewMessagesButton && (
-              <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-20">
+              <div className="absolute bottom-20 left-1/2 z-20 -translate-x-1/2 sm:bottom-24">
                 <Button
                   type="button"
                   size="sm"
@@ -1832,10 +1794,10 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
               )}
 
             </div> */}
-            <div className="p-4 border-t">
+            <div className="border-t p-4">
               <form
                 onSubmit={handleSubmit}
-                className="flex items-center gap-2 bg-[#111827] border border-gray-700 rounded-2xl px-3 py-2 shadow-lg"
+                className="flex flex-col gap-2 rounded-2xl border border-gray-700 bg-[#111827] px-3 py-2 shadow-lg sm:flex-row sm:items-center"
               >
 
                 {/* Voice Input */}
@@ -1843,7 +1805,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                   type="button"
                   onClick={toggleVoiceInput}
                   disabled={!interviewStarted || isPaused || interviewEnded}
-                  className={`p-2 rounded-lg ${isListening
+                  className={`self-start rounded-lg p-2 ${isListening
                     ? "bg-red-600 animate-pulse"
                     : "hover:bg-white/10"
                     }`}
@@ -1897,7 +1859,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                         : "Complete setup and start interview"
                   }
                   disabled={!interviewStarted || isPaused || interviewEnded}
-                  className="flex-1 bg-transparent outline-none resize-none text-white px-2"
+                  className="min-h-11 flex-1 resize-none bg-transparent px-2 text-white outline-none"
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
@@ -1912,7 +1874,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                   disabled={
                     !input.trim() || isLoading || interviewEnded || isPaused
                   }
-                  className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 px-3 py-2 rounded-lg"
+                  className="self-end rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 px-3 py-2 hover:from-purple-700 hover:to-pink-700 sm:self-auto"
                 >
                   <Send className="h-5 w-5 text-white" />
                 </button>
@@ -1931,10 +1893,10 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
 
 
-          <div className="flex-[0.3] flex flex-col gap-4">
+          <div className="flex flex-col gap-4 xl:flex-[0.32]">
 
             {/* TOP: Stats + Timer */}
-            <div className="bg-[#111827] rounded-xl p-4 shadow-md flex justify-between items-center">
+            <div className="flex flex-col gap-3 rounded-xl bg-[#111827] p-4 shadow-md sm:flex-row sm:items-center sm:justify-between">
 
               {/* Stats */}
               {cameraActive &&
@@ -1959,8 +1921,8 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
             </div>
 
             {/* CAMERA */}
-            <Card className="rounded-2xl overflow-hidden shadow-2xl bg-gray-900 relative">
-              <div className="relative aspect-video h-[220px]">
+            <Card className="relative overflow-hidden rounded-2xl bg-gray-900 shadow-2xl">
+              <div className="relative aspect-video min-h-[220px] sm:min-h-[260px]">
 
                 <video
                   ref={videoRef}
@@ -2017,7 +1979,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
               onChange={(e) => setCodeInput(e.target.value)}
               onKeyDown={handleCodeTextareaKeyDown}
               placeholder="Write your Bash/script answer here..."
-              className="min-h-60 resize-y bg-background font-mono text-sm"
+              className="min-h-52 resize-y bg-background font-mono text-sm sm:min-h-60"
               disabled={interviewEnded}
             />
 
@@ -2081,7 +2043,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       }
 
       {/* Exit button */}
-      <button className="rounded-lg text-black bg-slate-500 hover:bg-slate-600 w-28 h-12 fixed bottom-8 right-8 flex items-center justify-center shadow-lg pl-3 text-base font-medium">
+      <button className="fixed bottom-4 right-4 flex h-11 w-24 items-center justify-center rounded-lg bg-slate-500 pl-3 text-base font-medium text-black shadow-lg hover:bg-slate-600 sm:bottom-8 sm:right-8 sm:h-12 sm:w-28">
         <Link href="/congratulations">Exit</Link>
         <MoveRight className="ml-3 h-5 w-5" />
       </button>
