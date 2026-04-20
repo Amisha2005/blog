@@ -877,7 +877,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     const emotionSamples = emotionSamplesRef.current;
 
     if (emotionSamples.length === 0) {
-      return 65; // Neutral default (not too low)
+      return 0;
     }
 
     // Take last 70% of samples to ignore initial nervousness
@@ -895,13 +895,22 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       relevantSamples.reduce((sum, s) => sum + s.conf, 0) /
       relevantSamples.length;
 
-    // Simple weighted formula (you can tweak weights easily)
-    const presenceScore = Math.round(
-      avgSmile * 0.45 + (100 - avgStress) * 0.35 + avgConfidence * 0.2,
-    );
+    const calmScore = clampPercent(100 - avgStress);
 
-    // Clamp between 30 and 98
-    return Math.max(30, Math.min(98, presenceScore));
+    // Coverage factor avoids inflated scores when detections are too sparse.
+    const sampleCoverage = Math.min(1, emotionSamples.length / 45);
+
+    // Rebalanced weights reduce passive high scores from low stress alone.
+    const rawPresenceScore =
+      avgSmile * 0.4 + calmScore * 0.15 + avgConfidence * 0.45;
+
+    const coverageAdjustedScore = Math.round(rawPresenceScore * sampleCoverage);
+
+    if (emotionSamples.length < 15) {
+      return Math.max(0, Math.min(35, coverageAdjustedScore));
+    }
+
+    return Math.max(0, Math.min(98, coverageAdjustedScore));
   };
 
   const persistInterviewContext = useCallback(() => {
