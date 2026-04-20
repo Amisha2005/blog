@@ -154,6 +154,8 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     [],
   );
   const [debugObjectRows, setDebugObjectRows] = useState<string[]>([]);
+  const [objectDetectionUnavailable, setObjectDetectionUnavailable] =
+    useState<boolean>(false);
   const lastObjectAlertTimeRef = useRef<number>(0);
   const lastMultiFaceAlertTimeRef = useRef<number>(0);
   const suspiciousFrameStreakRef = useRef<number>(0);
@@ -166,17 +168,24 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const OBJECT_DETECTION_INTERVAL_MS = 700;
   const FACE_DETECTION_MIN_INTERVAL_MS = 350;
   const FACE_DETECTION_MAX_INTERVAL_MS = 1400;
+  const FACE_DETECTION_INPUT_SIZE = 256;
+  const FACE_DETECTION_SCORE_THRESHOLD = 0.35;
+  const FACE_VALIDATION_INPUT_SIZE = 320;
+  const FACE_VALIDATION_SCORE_THRESHOLD = 0.32;
+  const FACE_FALLBACK_INPUT_SIZE = 384;
+  const FACE_FALLBACK_SCORE_THRESHOLD = 0.28;
+  const FACE_FALLBACK_COOLDOWN_MS = 1600;
   const OBJECT_DETECTION_MIN_INTERVAL_MS = 500;
   const OBJECT_DETECTION_MAX_INTERVAL_MS = 1800;
   const OBJECT_SUSPICIOUS_MIN_SCORE = 0.5;
   const OBJECT_SUSPICIOUS_MIN_AREA_RATIO = 0.04;
-  const OBJECT_PHONE_MIN_SCORE = 0.16;
-  const OBJECT_PHONE_MIN_AREA_RATIO = 0.004;
-  const OBJECT_TABLET_MIN_SCORE = 0.22;
-  const OBJECT_TABLET_MIN_AREA_RATIO = 0.012;
-  const OBJECT_HANDHELD_AID_MIN_SCORE = 0.36;
+  const OBJECT_PHONE_MIN_SCORE = 0.12;
+  const OBJECT_PHONE_MIN_AREA_RATIO = 0.003;
+  const OBJECT_TABLET_MIN_SCORE = 0.18;
+  const OBJECT_TABLET_MIN_AREA_RATIO = 0.009;
+  const OBJECT_HANDHELD_AID_MIN_SCORE = 0.3;
   const OBJECT_HANDHELD_AID_MIN_AREA_RATIO = 0.005;
-  const OBJECT_SCREEN_MIN_SCORE = 0.36;
+  const OBJECT_SCREEN_MIN_SCORE = 0.3;
   const OBJECT_SCREEN_MIN_AREA_RATIO = 0.02;
   const OBJECT_LAPTOP_MIN_SCORE = 0.72;
   const OBJECT_LAPTOP_MIN_AREA_RATIO = 0.1;
@@ -207,12 +216,77 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const proctoringIncidentRef = useRef({ multiFace: 0, suspiciousObject: 0 });
   const lastInterviewQuestionRef = useRef<string>("");
   const lastEmotionUiUpdateRef = useRef<number>(0);
+  const lastFaceFallbackCheckRef = useRef<number>(0);
 
   const currentTimeRef = useRef<number | null>(null);
 
   const clampPercent = (value: number) => Math.max(0, Math.min(100, value));
   const clampInterval = (value: number, min: number, max: number) =>
     Math.max(min, Math.min(max, value));
+  const detectFacesForMode = useCallback(
+    async (
+      video: HTMLVideoElement,
+      mode: "live" | "validation" | "fallback" = "live",
+    ) => {
+      const inputSize =
+        mode === "validation"
+          ? FACE_VALIDATION_INPUT_SIZE
+          : mode === "fallback"
+            ? FACE_FALLBACK_INPUT_SIZE
+            : FACE_DETECTION_INPUT_SIZE;
+      const scoreThreshold =
+        mode === "validation"
+          ? FACE_VALIDATION_SCORE_THRESHOLD
+          : mode === "fallback"
+            ? FACE_FALLBACK_SCORE_THRESHOLD
+            : FACE_DETECTION_SCORE_THRESHOLD;
+
+      return faceapi
+        .detectAllFaces(
+          video,
+          new faceapi.TinyFaceDetectorOptions({ inputSize, scoreThreshold }),
+        )
+        .withFaceLandmarks()
+        .withFaceExpressions();
+    },
+    [],
+  );
+  const maybeRunFaceFallback = useCallback(
+    async (
+      video: HTMLVideoElement,
+      detections: Awaited<ReturnType<typeof detectFacesForMode>>,
+    ) => {
+      const now = Date.now();
+      const bestPrimaryScore = detections.reduce((maxScore, detection) => {
+        const nextScore =
+          typeof detection.detection?.score === "number"
+            ? detection.detection.score
+            : 0;
+        return Math.max(maxScore, nextScore);
+      }, 0);
+      const shouldRunFallback =
+        detections.length === 0 ||
+        (detections.length === 1 && bestPrimaryScore < 0.75);
+
+      if (!shouldRunFallback) return detections;
+      if (now - lastFaceFallbackCheckRef.current < FACE_FALLBACK_COOLDOWN_MS) {
+        return detections;
+      }
+
+      lastFaceFallbackCheckRef.current = now;
+
+      try {
+        const fallbackDetections = await detectFacesForMode(video, "fallback");
+        return fallbackDetections.length > detections.length
+          ? fallbackDetections
+          : detections;
+      } catch (error) {
+        console.error("Fallback face detection error", error);
+        return detections;
+      }
+    },
+    [detectFacesForMode],
+  );
 
   const scheduleEmotionDetection = useCallback((delay?: number) => {
     if (emotionLoopTimeoutRef.current) {
@@ -609,13 +683,8 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     }
 
     try {
-      const detections = await faceapi
-        .detectAllFaces(
-          video,
-          new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }),
-        )
-        .withFaceLandmarks()
-        .withFaceExpressions();
+      const primaryDetections = await detectFacesForMode(video, "validation");
+      const detections = await maybeRunFaceFallback(video, primaryDetections);
 
       if (detections.length > 1) {
         return {
@@ -646,7 +715,12 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         message: "Unable to recheck the camera right now. Please try again.",
       };
     }
-  }, [getSuspiciousDetections]);
+  }, [
+    detectFacesForMode,
+    getSuspiciousDetections,
+    getSuspiciousLabel,
+    maybeRunFaceFallback,
+  ]);
 
   const handleFixedIt = async () => {
     const validation = await validateInterviewConditions();
@@ -735,13 +809,22 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
           // A GPU is a processor designed to handle many calculations at the same time, especially for graphics and heavy computations like AI and machine learning.
           //modelAssetPath This loads the trained object detection model file.
-          scoreThreshold: 0.2,
-          maxResults: 10,
+          scoreThreshold: 0.14,
+          maxResults: 12,
           runningMode: "VIDEO",
         });
+        setObjectDetectionUnavailable(false);
         setIsObjectDetectorReady(true);
       } catch (e) {
         console.error("Object detector init failed", e);
+        setObjectDetectionUnavailable(true);
+        setMessages((p) => [
+          ...p,
+          {
+            text: "Object-based anti-cheating checks are limited right now. Face and tab monitoring will continue.",
+            isBot: true,
+          },
+        ]);
       }
     })();
 
@@ -786,13 +869,8 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     const detectionStartedAt = performance.now();
 
     try {
-      const detections = await faceapi
-        .detectAllFaces(
-          video,
-          new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }),
-        )
-        .withFaceLandmarks()
-        .withFaceExpressions();
+      const primaryDetections = await detectFacesForMode(video, "live");
+      const detections = await maybeRunFaceFallback(video, primaryDetections);
 
       const now = performance.now();
       const shouldUpdateEmotionUi =
@@ -889,7 +967,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     ) {
       scheduleEmotionDetection();
     }
-  }, [scheduleEmotionDetection]);
+  }, [detectFacesForMode, maybeRunFaceFallback, scheduleEmotionDetection]);
 
   const calculateFinalPresenceScore = () => {
     const emotionSamples = emotionSamplesRef.current;
@@ -2234,7 +2312,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
             <div className="flex flex-col gap-3 rounded-xl bg-[#111827] p-4 shadow-md sm:flex-row sm:items-center sm:justify-between">
 
               {/* Stats */}
-              {cameraActive &&
+              {cameraActive && (
                 <div className="text-sm space-y-1">
                   <p>😊 Smile: {smileScore.toFixed(0)}%</p>
                   <p className={stressScore > 60 ? "text-red-400" : ""}>
@@ -2243,8 +2321,13 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                   <p className={confidenceScore > 60 ? "text-blue-400" : ""}>
                     💪 Conf: {confidenceScore.toFixed(0)}%
                   </p>
+                  {objectDetectionUnavailable && (
+                    <p className="text-amber-300">
+                      Suspicious object checks are limited on this device.
+                    </p>
+                  )}
                 </div>
-              }
+              )}
 
               {/* Timer */}
               {interviewStarted && timeLeft !== null && (
