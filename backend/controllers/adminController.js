@@ -29,6 +29,7 @@
 // controllers/adminController.js
 // controllers/adminController.js
 const User = require("../model/usermodels");
+const InterviewResult = require("../model/interviewResult");
 
 const getAdminStats = async (req, res) => {
   try {
@@ -71,4 +72,29 @@ const getAdminStats = async (req, res) => {
   }
 };
 
-module.exports = { getAdminStats };
+const deleteLeaderboardRecord = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({ success: false, message: "Missing record id" });
+    }
+
+    const deleted = await InterviewResult.findByIdAndDelete(id);
+
+    if (!deleted) {
+      return res.status(404).json({ success: false, message: "Leaderboard record not found" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Leaderboard record deleted successfully",
+      deletedId: id,
+    });
+  } catch (error) {
+    console.error("Error deleting leaderboard record:", error);
+    return res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+module.exports = { getAdminStats, deleteLeaderboardRecord };

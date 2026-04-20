@@ -82,41 +82,61 @@ const router = useRouter(); // ← Add this line
     password:""
   });
   // const {storeTokenInLS}=useAuth();
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  // const {storeTokenInLS}=useAuth();
    const handleInput = (e) => {
-    let name = e.target.name;
-    let value = e.target.value;
+    const name = e.target.name;
+    const value = e.target.value;
 
     setUser({
       ...user,
       [name]: value,
     });
+    if (errorMessage) {
+      setErrorMessage("");
+    }
   };
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setErrorMessage("");
+
+    const normalizedEmail = user.email.trim().toLowerCase();
+    const trimmedPassword = user.password.trim();
+
+    if (!normalizedEmail || !trimmedPassword) {
+      setErrorMessage("Please enter both email and password.");
+      return;
+    }
+
     try {
+      setIsSubmitting(true);
       const response = await fetch(URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(user),
+        body: JSON.stringify({
+          email: normalizedEmail,
+          password: trimmedPassword,
+        }),
       });
-      console.log("login form", response);
       const res_data = await response.json();
       if (response.ok) {
-        console.log('res from server',res_data);
         storeTokenInLS(res_data.token);
-        console.log("login successful");
         setUser({
           email: "",
           password: "",
         });
-     router.push('/account');
+        router.push('/account');
       } else {
-        console.log("invalid crediential");
+        setErrorMessage(res_data?.message || "Invalid email or password.");
       }
     } catch (error) {
-      console.log(error);
+      console.error(error);
+      setErrorMessage("Network error. Please check your connection and try again.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
   return (
@@ -132,7 +152,7 @@ const router = useRouter(); // ← Add this line
         {/* Grid overlay (dark mode only) */}
         <div className="absolute inset-0 bg-grid-black/5 dark:bg-grid-white/5 bg-grid-16 pointer-events-none hidden dark:block" />
 
-        <Card className="relative w-full max-w-md shadow-2xl border border-gray-200/50 dark:border-white/10 bg-white/80 dark:bg-black/60 backdrop-blur-xl">
+        <Card className="relative w-full max-w-md shadow-2xl border border-gray-200/50 dark:border-white/10 bg-white/80 dark:bg-black/60 backdrop-blur-xl sm:max-w-lg">
           <div className="absolute inset-0 bg-gradient-to-br from-purple-400/5 via-transparent to-cyan-400/5 dark:from-purple-600/10 dark:to-cyan-600/10 rounded-2xl" />
 
           <CardHeader className="relative z-10 text-center pt-10 pb-8">
@@ -148,10 +168,13 @@ const router = useRouter(); // ← Add this line
             </CardDescription>
           </CardHeader>
 
-          <CardContent className="relative z-10 space-y-6 pb-10 px-8">
+          <CardContent className="relative z-10 space-y-6 px-4 pb-8 sm:px-8 sm:pb-10">
             {/* Social Login */}
-            <div className="grid grid-cols-2 gap-4">
+              
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Button onClick={handleGoogleLogin}
+
                 variant="outline"
                 className="w-full h-12 font-medium border-gray-300 dark:border-white/20 bg-gray-50/50 dark:bg-white/5 hover:bg-gray-100 dark:hover:bg-white/10"
               >
@@ -175,7 +198,7 @@ const router = useRouter(); // ← Add this line
             </div>
 
             {/* Login Form */}
-            <form className="space-y-5">
+            <form className="space-y-5" onSubmit={handleSubmit}>
               <div className="space-y-2">
                 <Label htmlFor="email" className="text-gray-700 dark:text-gray-300 font-medium">
                   Email Address
@@ -223,14 +246,20 @@ const router = useRouter(); // ← Add this line
                 </label>
               </div>
 
+              {errorMessage ? (
+                <div className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-400/30 dark:bg-rose-500/10 dark:text-rose-200">
+                  {errorMessage}
+                </div>
+              ) : null}
+
               <Button
+                type="submit"
                 size="lg"
                 className="w-full h-12 text-lg font-semibold bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-lg transform transition hover:scale-[1.02] active:scale-[0.98]"
-                 
-                 onClick={handleSubmit}
-                 >
+                disabled={isSubmitting}
+              >
                 <Mail className="mr-2 h-5 w-5" />
-                Log In with Email
+                {isSubmitting ? "Logging In..." : "Log In with Email"}
               </Button>
             </form>
 

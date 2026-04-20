@@ -9,7 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Users, TrendingUp, Shield, Trophy, Plus } from "lucide-react";
+import { Users, TrendingUp, Shield, Trophy, Plus, Trash2 } from "lucide-react";
 import { useAuth } from "@/app/Auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,6 +54,7 @@ interface InterviewTopic {
 }
 
 interface LeaderboardEntry {
+  _id: string;
   candidateName: string;
   topic: string;
   finalScore: number;
@@ -76,6 +77,7 @@ const DEMO_TOPIC_NAMES = new Set([
 
 export default function AdminDashboard() {
   const { isAdmin, authorizationToken } = useAuth();
+  const recommendedImageDimensions = "1200 x 675 px (16:9)";
 
   const [stats, setStats] = useState<Stats>({
     totalUsers: 0,
@@ -88,6 +90,7 @@ export default function AdminDashboard() {
   const [selectedTopic, setSelectedTopic] = useState<string>("");
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+  const [deletingLeaderboardId, setDeletingLeaderboardId] = useState<string | null>(null);
 
   const isDemoTopic = (topic?: InterviewTopic) => {
     if (!topic) return false;
@@ -181,6 +184,35 @@ export default function AdminDashboard() {
       setLeaderboard([]);
     } finally {
       setLeaderboardLoading(false);
+    }
+  };
+
+  const handleDeleteLeaderboardEntry = async (entry: LeaderboardEntry) => {
+    if (!authorizationToken) return;
+    const confirmed = window.confirm(
+      `Delete leaderboard record for ${entry.candidateName} in ${selectedTopic}?`,
+    );
+    if (!confirmed) return;
+
+    setDeletingLeaderboardId(entry._id);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/leaderboard/${entry._id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: authorizationToken,
+        },
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to delete leaderboard record");
+      }
+
+      await fetchLeaderboard(selectedTopic);
+    } catch (error) {
+      console.error("Failed to delete leaderboard record", error);
+      alert("Could not delete this leaderboard record.");
+    } finally {
+      setDeletingLeaderboardId(null);
     }
   };
 
@@ -327,11 +359,12 @@ export default function AdminDashboard() {
                       <th className="text-center py-3">Overall</th>
                       <th className="text-center py-3">Presence</th>
                       <th className="text-center py-3">Final Score</th>
+                      <th className="text-center py-3">Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {leaderboard.map((entry, index) => (
-                      <tr key={index} className="border-b border-border/50 transition hover:bg-muted/40">
+                      <tr key={entry._id || index} className="border-b border-border/50 transition hover:bg-muted/40">
                         <td className="py-3">
                           <span className="font-bold">#{index + 1}</span>
                         </td>
@@ -341,6 +374,19 @@ export default function AdminDashboard() {
                         <td className="py-3 text-center">{entry.presenceScore?.toFixed(1) || "N/A"}</td>
                         <td className="py-3 text-center font-bold text-green-600">
                           {entry.finalScore?.toFixed(1) || "N/A"}
+                        </td>
+                        <td className="py-3 text-center">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => handleDeleteLeaderboardEntry(entry)}
+                            disabled={deletingLeaderboardId === entry._id}
+                            className="rounded-lg"
+                          >
+                            <Trash2 className="mr-1 h-4 w-4" />
+                            {deletingLeaderboardId === entry._id ? "Deleting..." : "Delete"}
+                          </Button>
                         </td>
                       </tr>
                     ))}
@@ -402,6 +448,48 @@ export default function AdminDashboard() {
                   placeholder="https://example.com/image.jpg"
                   className="rounded-xl"
                 />
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Recommended topic card image size: {recommendedImageDimensions}. Use a clear
+                  16:9 cover image so it fits the topic card without awkward cropping.
+                </p>
+              </div>
+
+              <div className="space-y-3 rounded-2xl border border-border/60 bg-muted/20 p-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium">Topic Card Image Preview</p>
+                    <p className="text-xs text-muted-foreground">
+                      This preview matches the interview topic card framing.
+                    </p>
+                  </div>
+                  <span className="rounded-full border border-border/60 px-3 py-1 text-xs text-muted-foreground">
+                    {recommendedImageDimensions}
+                  </span>
+                </div>
+                <div className="relative aspect-[16/9] overflow-hidden rounded-2xl bg-gradient-to-br from-sky-500/20 via-slate-900 to-emerald-500/20">
+                  {newTopic.image ? (
+                    <>
+                      <img
+                        src={newTopic.image}
+                        alt={newTopic.topicName || "Topic preview"}
+                        className="absolute inset-0 h-full w-full object-cover object-center"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent" />
+                    </>
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-sky-500 to-emerald-500">
+                      <span className="text-4xl text-white">🎯</span>
+                    </div>
+                  )}
+                  <div className="absolute inset-x-0 bottom-0 p-4 text-white">
+                    <p className="line-clamp-1 text-lg font-semibold">
+                      {newTopic.topicName || "Your topic title"}
+                    </p>
+                    <p className="mt-1 line-clamp-2 text-sm text-white/80">
+                      {newTopic.description || "Your topic description preview will appear here."}
+                    </p>
+                  </div>
+                </div>
               </div>
 
               <div>

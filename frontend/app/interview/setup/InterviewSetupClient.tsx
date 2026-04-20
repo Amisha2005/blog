@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { AlertTriangle, Camera, MonitorSmartphone, Mic } from "lucide-react";
+import MobileInterviewGuard, {
+  useInterviewMobileBlock,
+} from "../MobileInterviewGuard";
 
 type InterviewSetupClientProps = {
   initialTopic: string;
@@ -54,20 +58,7 @@ export default function InterviewSetupClient({
   initialSource,
 }: InterviewSetupClientProps) {
   const router = useRouter();
-  const [isLaptopDevice, setIsLaptopDevice] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    const evaluateDevice = () => {
-      const isSmallScreen = window.matchMedia("(max-width: 1023px)").matches;
-      const hasCoarsePointer = window.matchMedia("(pointer: coarse)").matches;
-      setIsLaptopDevice(!(isSmallScreen || hasCoarsePointer));
-    };
-
-    evaluateDevice();
-    window.addEventListener("resize", evaluateDevice);
-
-    return () => window.removeEventListener("resize", evaluateDevice);
-  }, []);
+  const { isReady, isMobileBlocked } = useInterviewMobileBlock();
 
   const topicSource: "demo" | "admin" = initialSource === "demo" ? "demo" : "admin";
 
@@ -143,28 +134,12 @@ export default function InterviewSetupClient({
     router.push(`/interview/room?${params.toString()}`);
   };
 
-  if (isLaptopDevice === false) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-purple-50 dark:from-slate-950 dark:to-purple-950/40 flex items-center justify-center px-4">
-        <Card className="max-w-xl rounded-3xl border border-red-200/60 bg-white/95 p-8 text-center shadow-2xl dark:border-red-500/20 dark:bg-black/80 md:p-10">
-          <h1 className="text-3xl font-bold text-red-600 dark:text-red-400">Laptop Required</h1>
-          <p className="mt-4 text-base leading-7 text-muted-foreground">
-            The interview only runs on laptops or desktops. Please reopen this website on a laptop to continue the interview.
-          </p>
-          <p className="mt-3 text-sm text-muted-foreground">
-            Mobile devices are blocked because camera, timer, and proctoring checks are not reliable enough on small screens.
-          </p>
-        </Card>
-      </div>
-    );
+  if (!isReady) {
+    return null;
   }
 
-  if (isLaptopDevice === null) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-purple-50 dark:from-slate-950 dark:to-purple-950/40 flex items-center justify-center px-4">
-        <p className="text-muted-foreground">Checking device compatibility...</p>
-      </div>
-    );
+  if (isMobileBlocked) {
+    return <MobileInterviewGuard title="Interview Setup Is Disabled On Mobile" />;
   }
 
   return (
@@ -255,11 +230,36 @@ export default function InterviewSetupClient({
             </div>
           </div>
 
+          <div className="mt-8 rounded-2xl border border-amber-300/40 bg-amber-50/80 p-5 text-sm text-slate-800 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-50">
+            <div className="flex items-center gap-2 text-base font-semibold">
+              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-300" />
+              Before You Start
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <div className="flex items-start gap-3 rounded-xl bg-white/60 p-3 dark:bg-white/5">
+                <Camera className="mt-0.5 h-4 w-4 text-sky-600 dark:text-sky-300" />
+                <p>Keep only one face visible and stay clearly in frame during the interview.</p>
+              </div>
+              <div className="flex items-start gap-3 rounded-xl bg-white/60 p-3 dark:bg-white/5">
+                <MonitorSmartphone className="mt-0.5 h-4 w-4 text-sky-600 dark:text-sky-300" />
+                <p>Do not use phone, notes, calculator, tablet, or other extra devices while answering.</p>
+              </div>
+              <div className="flex items-start gap-3 rounded-xl bg-white/60 p-3 dark:bg-white/5">
+                <Mic className="mt-0.5 h-4 w-4 text-sky-600 dark:text-sky-300" />
+                <p>Allow camera and microphone access before starting so the session can run smoothly.</p>
+              </div>
+              <div className="flex items-start gap-3 rounded-xl bg-white/60 p-3 dark:bg-white/5">
+                <AlertTriangle className="mt-0.5 h-4 w-4 text-sky-600 dark:text-sky-300" />
+                <p>Tab switching, multiple faces, or suspicious objects may pause the interview automatically.</p>
+              </div>
+            </div>
+          </div>
+
           <div className="mt-10 text-center">
             <Button
               type="button"
               size="lg"
-              className="group relative h-14 min-w-[240px] rounded-2xl border border-sky-400/40 bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-500 px-10 text-base font-semibold tracking-wide text-white shadow-lg shadow-cyan-500/30 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-cyan-500/40 disabled:cursor-not-allowed disabled:opacity-50"
+              className="group relative h-14 w-full rounded-2xl border border-sky-400/40 bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-500 px-8 text-base font-semibold tracking-wide text-white shadow-lg shadow-cyan-500/30 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-cyan-500/40 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:min-w-[240px] sm:px-10"
               onClick={handleStart}
               disabled={!canStart}
             >

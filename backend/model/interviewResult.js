@@ -25,6 +25,17 @@ const interviewResultSchema = new mongoose.Schema(
       default: "Candidate",
       trim: true,
     },
+    candidateId: {
+      type: String,
+      trim: true,
+      index: true,
+    },
+    candidateEmail: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      index: true,
+    },
     overall: {
       type: Number,
       required: true,

@@ -2,10 +2,8 @@
 "use client";
 
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Search, Calendar } from "lucide-react";
 import Link from "next/link";
@@ -22,77 +20,14 @@ interface InterviewTopic {
   createdAt: string;
 }
 
-// Mock data — replace with real posts from CMS/MDX later
-const allPosts = [
-  {
-    id: 1,
-    src:"https://images.unsplash.com/photo-1547658719-da2b51169166?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8d2ViJTIwZGVzaWdufGVufDB8fDB8fHww",
-    title: "The Future of Web Development in 2025",
-    excerpt: "React Server Components, AI-assisted coding, edge runtime, and what it all means for developers.",
-    author: "Amisha Nishankar",
-    avatar: "/avatar.jpg",
-    date: "2025-12-04",
-    readTime: "8 min",
-    category: "Future",
-    featured: true,
-  },
-  {
-    id: 2,
-    title: "Mastering TypeScript: Advanced Patterns",
-    src:"https://images.unsplash.com/photo-1568716353609-12ddc5c67f04?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8dHlwZSUyMHNjcmlwdCUyMGluJTIwamF2YXxlbnwwfHwwfHx8MA%3D%3D",
-    excerpt: "Explore advanced TypeScript patterns to write safer and more maintainable code.",
-    author: "Amisha Nishankar",
-    date: "2025-12-02",
-    readTime: "12 min",
-    category: "TypeScript",
-  },
-  {
-    id: 3,
-        src:"https://images.unsplash.com/photo-1690683789978-3cf73960d650?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTh8fHB5dGhvbnxlbnwwfHwwfHx8MA%3D%3D",
-    title: "Specialization in AI",
-    excerpt: "An in-depth guide to Python's latest features for AI and machine learning development.",
-    author: "Amisha Nishankar",
-    date: "2025-11-30",
-    readTime: "7 min",
-    category: "Accessibility",
-  },
-  {
-    id: 4,
-    title: "Specialization in DataScience",
-    src:"https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8ZGF0YSUyMHNjaWVuY2V8ZW58MHx8MHx8fDA%3D",
-    excerpt: "A specialization course on DataScience using Java and its applications.",
-    author: "Amisha Nishankar",
-    date: "2025-11-25",
-    readTime: "10 min",
-    category: "Next.js",
-  },
-  {
-    id: 5,
-    title: "specializaition in Cybersecurity",
-    src:"https://media.istockphoto.com/id/2020157664/photo/cyber-security-network-cybersecurity-concept-global-network-security-technology-business.webp?a=1&b=1&s=612x612&w=0&k=20&c=3dJ_LcKoMA7sEzkX3e6W-DEiyz3RCfPrwmzTmjUS4SM=",
-    excerpt: "A comprehensive guide to modern cybersecurity practices and protocols.",
-    author: "Amisha Nishankar",
-    date: "2025-11-20",
-    readTime: "6 min",
-    category: "Design",
-  },
-];
-
-const categories = ["All", "Next.js", "TypeScript", "Design", "Accessibility", "Future"];
+const topicImageContainerClass =
+  "relative aspect-[16/9] overflow-hidden rounded-t-2xl bg-gradient-to-br from-sky-500/20 via-slate-900 to-emerald-500/20";
 
 export default function ArticlesPage() {
   const [topics, setTopics] = useState<InterviewTopic[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [loading, setLoading] = useState(true);
-
-  const filteredPosts = allPosts.filter((post) => {
-    const matchesSearch = post.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         post.excerpt.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = selectedCategory === "All" || post.category === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
-
 
   // Fetch topics from backend
   useEffect(() => {
@@ -166,15 +101,18 @@ export default function ArticlesPage() {
       ) : (
         <div className="grid gap-7 md:grid-cols-2 lg:grid-cols-3">
           {filteredTopics.map((topic, index) => (
-            <Card key={topic._id} className="glass-panel animate-fade-up h-full flex flex-col overflow-hidden rounded-2xl transition-all duration-300 hover:-translate-y-1 hover:shadow-xl" style={{ animationDelay: `${index * 70}ms` }}>
+            <Card key={topic._id} className="glass-panel group animate-fade-up flex h-full flex-col overflow-hidden rounded-2xl transition-all duration-300 hover:-translate-y-1 hover:shadow-xl" style={{ animationDelay: `${index * 70}ms` }}>
               <CardHeader className="p-0">
-                <div className="aspect-video relative">
+                <div className={topicImageContainerClass}>
                   {topic.image ? (
-                    <img
-                      src={topic.image}
-                      alt={topic.topicName}
-                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                    />
+                    <>
+                      <img
+                        src={topic.image}
+                        alt={topic.topicName}
+                        className="absolute inset-0 h-full w-full object-cover object-center transition-transform duration-500 group-hover:scale-105"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
+                    </>
                   ) : (
                     <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-sky-500 to-emerald-500">
                       <span className="text-white text-4xl">🎯</span>

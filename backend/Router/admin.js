@@ -2,11 +2,20 @@
 
 const express = require("express");
 const router = express.Router();
-const { getAdminStats } = require("../controllers/adminController");
+const authMiddleware = require("../middleware/auth-middleware");
+const {
+  getAdminStats,
+  deleteLeaderboardRecord,
+} = require("../controllers/adminController");
 
-// Optional: Add admin authentication middleware here
-// const { isAdmin } = require("../middleware/auth");
+const requireAdmin = (req, res, next) => {
+  if (!req.user?.isAdmin) {
+    return res.status(403).json({ success: false, message: "Admin access required" });
+  }
+  next();
+};
 
-router.get("/stats", getAdminStats);     // This will be available at /api/admin/stats
+router.get("/stats", authMiddleware, requireAdmin, getAdminStats);
+router.delete("/leaderboard/:id", authMiddleware, requireAdmin, deleteLeaderboardRecord);
 
 module.exports = router;

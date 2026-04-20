@@ -59,6 +59,26 @@ interface InterviewRoomProps {
 //objectDtector where object are store initially it will be null
 
 let objectDetector: ObjectDetector | null = null;
+const PHONE_LIKE_PATTERN =
+  /cell phone|mobile phone|smartphone|\bphone\b|iphone|android phone|telephone handset|cellular telephone|handheld phone|wireless phone|portable phone|portable telephone/;
+const TABLET_LIKE_PATTERN =
+  /\btablet\b|ipad|tablet computer|galaxy tab|tab device|e-reader|kindle/;
+const BOOK_LIKE_PATTERN =
+  /\bbook\b|\bnotebook\b|\bnotepad\b|\bdiary\b|\bjournal\b|document|paper|sheet of paper|printed page|worksheet|clipboard|binder|notes/;
+const LAPTOP_LIKE_PATTERN = /\blaptop\b|notebook computer/;
+const SCREEN_LIKE_PATTERN =
+  /\bmonitor\b|computer monitor|\btv\b|television|display screen|desktop computer|screen|display/;
+const HANDHELD_AID_PATTERN =
+  /remote control|\bcalculator\b|portable media player/;
+const CHEATING_OBJECT_PATTERN = new RegExp(
+  [
+    PHONE_LIKE_PATTERN.source,
+    TABLET_LIKE_PATTERN.source,
+    BOOK_LIKE_PATTERN.source,
+    SCREEN_LIKE_PATTERN.source,
+    HANDHELD_AID_PATTERN.source,
+  ].join("|"),
+);
 
 const normalizeInterviewTopic = (rawTopic: string) => {
   const decoded = decodeURIComponent(rawTopic || "").replace(/\s+/g, " ").trim();
@@ -73,11 +93,11 @@ const normalizeInterviewTopic = (rawTopic: string) => {
 };
 
 export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
-  const [isLaptopDevice, setIsLaptopDevice] = useState<boolean | null>(null);
   const searchParams = useSearchParams();
   const difficultyParam = searchParams.get("difficulty");
   const durationParam = searchParams.get("duration");
   const autoStartParam = searchParams.get("autostart");
+  const debugDetectionMode = searchParams.get("debugDetection") === "1";
   const cleanTopic = selectedTopic ? normalizeInterviewTopic(selectedTopic) : null;
   const [autoStartRequested, setAutoStartRequested] = useState(false);
   const [skipSetupScreen, setSkipSetupScreen] = useState(false);
@@ -97,6 +117,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const [isTimerRunning, setIsTimerRunning] = useState(false);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerDeadlineRef = useRef<number | null>(null);
 
   // Selection states
   const [showDifficulty, setShowDifficulty] = useState<boolean>(false);
@@ -106,19 +127,6 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const [showDuration, setShowDuration] = useState<boolean>(false);
   const [selectedDuration, setSelectedDuration] = useState<number | null>(null); // minutes
   const [manualTopic, setManualTopic] = useState("");
-
-  useEffect(() => {
-    const evaluateDevice = () => {
-      const isSmallScreen = window.matchMedia("(max-width: 1023px)").matches;
-      const hasCoarsePointer = window.matchMedia("(pointer: coarse)").matches;
-      setIsLaptopDevice(!(isSmallScreen || hasCoarsePointer));
-    };
-
-    evaluateDevice();
-    window.addEventListener("resize", evaluateDevice);
-
-    return () => window.removeEventListener("resize", evaluateDevice);
-  }, []);
 
   // Camera & Media states
   const [cameraActive, setCameraActive] = useState<boolean>(false);
@@ -146,6 +154,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
   // Emotion & Object detection
   const [isModelReady, setIsModelReady] = useState<boolean>(false);
+  const [isObjectDetectorReady, setIsObjectDetectorReady] = useState<boolean>(false);
   const emotionSamplesRef = useRef<
     { smile: number; stress: number; conf: number; timestamp: number }[]
   >([]);
@@ -161,22 +170,62 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const [showSuspiciousObjectModal, setShowSuspiciousObjectModal] =
     useState<boolean>(false);
   const [showTabSwitchModal, setShowTabSwitchModal] = useState<boolean>(false);
+  const [activeViolation, setActiveViolation] = useState<
+    "multiFace" | "suspiciousObject" | "tabSwitch" | null
+  >(null);
+  const [resumeValidationMessage, setResumeValidationMessage] = useState("");
+  const [isResumeChecking, setIsResumeChecking] = useState(false);
   const [suspiciousObjectsList, setSuspiciousObjectsList] = useState<string[]>(
     [],
   );
+  const [debugObjectRows, setDebugObjectRows] = useState<string[]>([]);
+  const [objectDetectionUnavailable, setObjectDetectionUnavailable] =
+    useState<boolean>(false);
   const lastObjectAlertTimeRef = useRef<number>(0);
+  const lastMultiFaceAlertTimeRef = useRef<number>(0);
   const suspiciousFrameStreakRef = useRef<number>(0);
-  const OBJECT_ALERT_COOLDOWN_MS = 10000;
-  const FACE_DETECTION_INTERVAL_MS = 450;
-  const OBJECT_DETECTION_INTERVAL_MS = 700;
+  const multiFaceFrameStreakRef = useRef<number>(0);
+  const lastDebugObjectUpdateRef = useRef<number>(0);
+  const OBJECT_ALERT_COOLDOWN_MS = 7000;
+  const MULTI_FACE_ALERT_COOLDOWN_MS = 5000;
+  const MULTI_FACE_SUSPICIOUS_CONSECUTIVE_FRAMES = 1;
+  const FACE_DETECTION_INTERVAL_MS = 260;
+  const OBJECT_DETECTION_INTERVAL_MS = 480;
+  const FACE_DETECTION_MIN_INTERVAL_MS = 180;
+  const FACE_DETECTION_MAX_INTERVAL_MS = 650;
+  const FACE_DETECTION_INPUT_SIZE = 224;
+  const FACE_DETECTION_SCORE_THRESHOLD = 0.3;
+  const FACE_VALIDATION_INPUT_SIZE = 256;
+  const FACE_VALIDATION_SCORE_THRESHOLD = 0.28;
+  const FACE_FALLBACK_INPUT_SIZE = 320;
+  const FACE_FALLBACK_SCORE_THRESHOLD = 0.22;
+  const FACE_FALLBACK_COOLDOWN_MS = 700;
+  const OBJECT_DETECTION_MIN_INTERVAL_MS = 320;
+  const OBJECT_DETECTION_MAX_INTERVAL_MS = 950;
   const OBJECT_SUSPICIOUS_MIN_SCORE = 0.5;
   const OBJECT_SUSPICIOUS_MIN_AREA_RATIO = 0.04;
+  const OBJECT_PHONE_MIN_SCORE = 0.08;
+  const OBJECT_PHONE_MIN_AREA_RATIO = 0.002;
+  const OBJECT_TABLET_MIN_SCORE = 0.18;
+  const OBJECT_TABLET_MIN_AREA_RATIO = 0.009;
+  const OBJECT_HANDHELD_AID_MIN_SCORE = 0.3;
+  const OBJECT_HANDHELD_AID_MIN_AREA_RATIO = 0.005;
+  const OBJECT_SCREEN_MIN_SCORE = 0.3;
+  const OBJECT_SCREEN_MIN_AREA_RATIO = 0.02;
   const OBJECT_LAPTOP_MIN_SCORE = 0.72;
   const OBJECT_LAPTOP_MIN_AREA_RATIO = 0.1;
   const OBJECT_USER_LAPTOP_BOTTOM_ZONE = 0.7;
   const OBJECT_SUSPICIOUS_CONSECUTIVE_FRAMES = 3;
-  const lastFaceDetectionTimeRef = useRef<number>(0);
-  const lastObjectDetectionTimeRef = useRef<number>(0);
+  const CHEATING_OBJECT_EVIDENCE_WINDOW_MS = 1800;
+  const CHEATING_OBJECT_EVIDENCE_REQUIRED_HITS = 1;
+  const CHEATING_OBJECT_EVIDENCE_MIN_SCORE = 0.06;
+  const CHEATING_OBJECT_EVIDENCE_MIN_AREA_RATIO = 0.0012;
+  const EMOTION_UI_UPDATE_INTERVAL_MS = 500;
+  const DEBUG_OBJECT_UPDATE_INTERVAL_MS = 450;
+  const emotionLoopTimeoutRef = useRef<any>(null);
+  const objectLoopTimeoutRef = useRef<any>(null);
+  const dynamicEmotionIntervalRef = useRef<number>(FACE_DETECTION_INTERVAL_MS);
+  const dynamicObjectIntervalRef = useRef<number>(OBJECT_DETECTION_INTERVAL_MS);
   const isFaceDetectionRunningRef = useRef(false);
   const isObjectDetectionRunningRef = useRef(false);
 
@@ -192,11 +241,105 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const interviewStartedRef = useRef(false);
   const interviewEndedRef = useRef(false);
   const isModelReadyRef = useRef(false);
+  const isObjectDetectorReadyRef = useRef(false);
   const isPausedRef = useRef(false);
   const proctoringIncidentRef = useRef({ multiFace: 0, suspiciousObject: 0 });
   const lastInterviewQuestionRef = useRef<string>("");
+  const lastEmotionUiUpdateRef = useRef<number>(0);
+  const lastFaceFallbackCheckRef = useRef<number>(0);
+  const cheatingObjectEvidenceHitsRef = useRef<number[]>([]);
 
   const currentTimeRef = useRef<number | null>(null);
+
+  const clampPercent = (value: number) => Math.max(0, Math.min(100, value));
+  const clampInterval = (value: number, min: number, max: number) =>
+    Math.max(min, Math.min(max, value));
+  const detectFacesForMode = useCallback(
+    async (
+      video: HTMLVideoElement,
+      mode: "live" | "validation" | "fallback" = "live",
+    ) => {
+      const inputSize =
+        mode === "validation"
+          ? FACE_VALIDATION_INPUT_SIZE
+          : mode === "fallback"
+            ? FACE_FALLBACK_INPUT_SIZE
+            : FACE_DETECTION_INPUT_SIZE;
+      const scoreThreshold =
+        mode === "validation"
+          ? FACE_VALIDATION_SCORE_THRESHOLD
+          : mode === "fallback"
+            ? FACE_FALLBACK_SCORE_THRESHOLD
+            : FACE_DETECTION_SCORE_THRESHOLD;
+
+      return faceapi
+        .detectAllFaces(
+          video,
+          new faceapi.TinyFaceDetectorOptions({ inputSize, scoreThreshold }),
+        )
+        .withFaceLandmarks()
+        .withFaceExpressions();
+    },
+    [],
+  );
+  const maybeRunFaceFallback = useCallback(
+    async (
+      video: HTMLVideoElement,
+      detections: Awaited<ReturnType<typeof detectFacesForMode>>,
+    ) => {
+      const now = Date.now();
+      const bestPrimaryScore = detections.reduce((maxScore, detection) => {
+        const nextScore =
+          typeof detection.detection?.score === "number"
+            ? detection.detection.score
+            : 0;
+        return Math.max(maxScore, nextScore);
+      }, 0);
+      const shouldRunFallback =
+        detections.length === 0 ||
+        (detections.length === 1 && bestPrimaryScore < 0.82);
+
+      if (!shouldRunFallback) return detections;
+      if (now - lastFaceFallbackCheckRef.current < FACE_FALLBACK_COOLDOWN_MS) {
+        return detections;
+      }
+
+      lastFaceFallbackCheckRef.current = now;
+
+      try {
+        const fallbackDetections = await detectFacesForMode(video, "fallback");
+        return fallbackDetections.length > detections.length
+          ? fallbackDetections
+          : detections;
+      } catch (error) {
+        console.error("Fallback face detection error", error);
+        return detections;
+      }
+    },
+    [detectFacesForMode],
+  );
+
+  const scheduleEmotionDetection = useCallback((delay?: number) => {
+    if (emotionLoopTimeoutRef.current) {
+      clearTimeout(emotionLoopTimeoutRef.current);
+      emotionLoopTimeoutRef.current = null;
+    }
+
+    emotionLoopTimeoutRef.current = window.setTimeout(() => {
+      void detectEmotions();
+    }, delay ?? dynamicEmotionIntervalRef.current);
+  }, []);
+
+  const scheduleObjectDetection = useCallback((delay?: number) => {
+    if (objectLoopTimeoutRef.current) {
+      clearTimeout(objectLoopTimeoutRef.current);
+      objectLoopTimeoutRef.current = null;
+    }
+
+    objectLoopTimeoutRef.current = window.setTimeout(() => {
+      void detectObjects();
+    }, delay ?? dynamicObjectIntervalRef.current);
+  }, []);
 
   useEffect(() => {
     cameraActiveRef.current = cameraActive;
@@ -215,21 +358,82 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   }, [isModelReady]);
 
   useEffect(() => {
+    isObjectDetectorReadyRef.current = isObjectDetectorReady;
+  }, [isObjectDetectorReady]);
+
+  useEffect(() => {
     isPausedRef.current = isPaused;
   }, [isPaused]);
+
+  useEffect(() => {
+    if (!debugDetectionMode) {
+      setDebugObjectRows([]);
+      lastDebugObjectUpdateRef.current = 0;
+    }
+  }, [debugDetectionMode]);
+
+  const stopEmotionDetectionLoop = useCallback(() => {
+    if (emotionLoopTimeoutRef.current) {
+      clearTimeout(emotionLoopTimeoutRef.current);
+      emotionLoopTimeoutRef.current = null;
+    }
+
+    isFaceDetectionRunningRef.current = false;
+  }, []);
+
+  const stopObjectDetectionLoop = useCallback(() => {
+    if (objectLoopTimeoutRef.current) {
+      clearTimeout(objectLoopTimeoutRef.current);
+      objectLoopTimeoutRef.current = null;
+    }
+
+    isObjectDetectionRunningRef.current = false;
+  }, []);
+
+  const stopDetectionLoops = useCallback(() => {
+    stopEmotionDetectionLoop();
+    stopObjectDetectionLoop();
+  }, [stopEmotionDetectionLoop, stopObjectDetectionLoop]);
+
+  const pauseInterviewForViolation = useCallback(
+    (
+      type: "multiFace" | "suspiciousObject" | "tabSwitch",
+      labels: string[] = [],
+    ) => {
+      stopDetectionLoops();
+      setActiveViolation(type);
+      setResumeValidationMessage("");
+      setIsResumeChecking(false);
+      setShowMultiFaceModal(type === "multiFace");
+      setShowSuspiciousObjectModal(type === "suspiciousObject");
+      setShowTabSwitchModal(type === "tabSwitch");
+      if (type === "suspiciousObject") {
+        setSuspiciousObjectsList(labels);
+      }
+      setIsPaused(true);
+      isPausedRef.current = true;
+    },
+    [stopDetectionLoops],
+  );
 
   const runTimerInterval = () => {
     if (timerRef.current) clearInterval(timerRef.current);
 
     timerRef.current = setInterval(() => {
-      if (hasEndedRef.current || currentTimeRef.current === null) return;
+      if (hasEndedRef.current || timerDeadlineRef.current === null) return;
 
-      const next = currentTimeRef.current - 1;
-      currentTimeRef.current = next;
-      setTimeLeft(next);
+      const remainingMs = timerDeadlineRef.current - Date.now();
+      const next = Math.max(0, Math.ceil(remainingMs / 1000));
+
+      if (currentTimeRef.current !== next) {
+        currentTimeRef.current = next;
+        setTimeLeft(next);
+      }
 
       if (next <= 0) {
         hasEndedRef.current = true;
+        currentTimeRef.current = 0;
+        timerDeadlineRef.current = null;
         clearInterval(timerRef.current!);
         timerRef.current = null;
 
@@ -247,14 +451,17 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
           window.location.href = "/congratulations";
         }, 1500);
       }
-    }, 1000);
+    }, 250);
   };
 
   const startInterviewTimer = (seconds: number) => {
     console.log("[TIMER] Starting with", seconds, "seconds");
 
-    setTimeLeft(seconds);
-    currentTimeRef.current = seconds;
+    const safeSeconds = Math.max(0, seconds);
+
+    setTimeLeft(safeSeconds);
+    currentTimeRef.current = safeSeconds;
+    timerDeadlineRef.current = Date.now() + safeSeconds * 1000;
     setIsTimerRunning(true);
     hasEndedRef.current = false;
     runTimerInterval();
@@ -262,6 +469,17 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   // Stop/pause timer
   const pauseTimer = () => {
     console.log("[TIMER] Pausing");
+
+    if (timerDeadlineRef.current !== null) {
+      const remainingSeconds = Math.max(
+        0,
+        Math.ceil((timerDeadlineRef.current - Date.now()) / 1000),
+      );
+      currentTimeRef.current = remainingSeconds;
+      setTimeLeft(remainingSeconds);
+      timerDeadlineRef.current = null;
+    }
+
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
@@ -329,6 +547,9 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   };
 
   const stopCamera = () => {
+    stopDetectionLoops();
+    cheatingObjectEvidenceHitsRef.current = [];
+
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
@@ -340,6 +561,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const resumeInterviewTimer = () => {
     if (currentTimeRef.current === null || currentTimeRef.current <= 0) return;
 
+    timerDeadlineRef.current = Date.now() + currentTimeRef.current * 1000;
     setIsTimerRunning(true);
     runTimerInterval();
   };
@@ -360,16 +582,52 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       const frameArea = Math.max(1, (video.videoWidth || 1) * (video.videoHeight || 1));
 
       return detections.filter((detection) => {
-        const label = (detection.categories?.[0]?.categoryName || "").toLowerCase();
-        const score = detection.categories?.[0]?.score ?? 0;
+        const categories = (detection.categories || []).map((category) => ({
+          label: (category.categoryName || "").toLowerCase(),
+          score: category.score ?? 0,
+        }));
+
+        if (categories.length === 0) return false;
+
         const originY = detection.boundingBox?.originY ?? 0;
         const width = detection.boundingBox?.width ?? 0;
         const height = detection.boundingBox?.height ?? 0;
         const areaRatio = (width * height) / frameArea;
 
-        const isPhone = /cell phone|mobile phone|smartphone|\bphone\b/.test(label);
-        const isBookLike = /\bbook\b|\bnotebook\b|\bnotepad\b|\bdiary\b|\bjournal\b/.test(label);
-        const isLaptopLike = /\blaptop\b|notebook computer/.test(label);
+        let phoneScore = 0;
+        let tabletScore = 0;
+        let bookScore = 0;
+        let laptopScore = 0;
+        let screenScore = 0;
+        let handheldAidScore = 0;
+
+        for (const category of categories) {
+          if (PHONE_LIKE_PATTERN.test(category.label)) {
+            phoneScore = Math.max(phoneScore, category.score);
+          }
+          if (TABLET_LIKE_PATTERN.test(category.label)) {
+            tabletScore = Math.max(tabletScore, category.score);
+          }
+          if (BOOK_LIKE_PATTERN.test(category.label)) {
+            bookScore = Math.max(bookScore, category.score);
+          }
+          if (LAPTOP_LIKE_PATTERN.test(category.label)) {
+            laptopScore = Math.max(laptopScore, category.score);
+          }
+          if (SCREEN_LIKE_PATTERN.test(category.label)) {
+            screenScore = Math.max(screenScore, category.score);
+          }
+          if (HANDHELD_AID_PATTERN.test(category.label)) {
+            handheldAidScore = Math.max(handheldAidScore, category.score);
+          }
+        }
+
+        const isPhone = phoneScore > 0;
+        const isTablet = tabletScore > 0;
+        const isBookLike = bookScore > 0;
+        const isLaptopLike = laptopScore > 0;
+        const isScreenLike = screenScore > 0;
+        const isHandheldAid = handheldAidScore > 0;
 
         if (isLaptopLike) {
           const videoHeight = Math.max(1, video.videoHeight || 1);
@@ -382,17 +640,44 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
           }
 
           return (
-            score >= OBJECT_LAPTOP_MIN_SCORE &&
+            laptopScore >= OBJECT_LAPTOP_MIN_SCORE &&
             areaRatio >= OBJECT_LAPTOP_MIN_AREA_RATIO
           );
         }
 
         if (isBookLike) {
-          return score >= 0.32 && areaRatio >= 0.012;
+          return bookScore >= 0.26 && areaRatio >= 0.008;
         }
 
         if (isPhone) {
-          return score >= OBJECT_SUSPICIOUS_MIN_SCORE && areaRatio >= 0.015;
+          if (phoneScore >= 0.5 && areaRatio >= 0.0025) return true;
+          if (phoneScore >= 0.3 && areaRatio >= 0.005) return true;
+          return (
+            phoneScore >= OBJECT_PHONE_MIN_SCORE &&
+            areaRatio >= OBJECT_PHONE_MIN_AREA_RATIO
+          );
+        }
+
+        if (isTablet) {
+          if (tabletScore >= 0.5 && areaRatio >= 0.005) return true;
+          return (
+            tabletScore >= OBJECT_TABLET_MIN_SCORE &&
+            areaRatio >= OBJECT_TABLET_MIN_AREA_RATIO
+          );
+        }
+
+        if (isScreenLike) {
+          return (
+            screenScore >= OBJECT_SCREEN_MIN_SCORE &&
+            areaRatio >= OBJECT_SCREEN_MIN_AREA_RATIO
+          );
+        }
+
+        if (isHandheldAid) {
+          return (
+            handheldAidScore >= OBJECT_HANDHELD_AID_MIN_SCORE &&
+            areaRatio >= OBJECT_HANDHELD_AID_MIN_AREA_RATIO
+          );
         }
 
         return false;
@@ -401,7 +686,66 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     [],
   );
 
-  const validateInterviewConditions = useCallback(async () => {
+  const getCheatingObjectEvidenceDetections = useCallback(
+    (
+      detections: Array<{
+        categories?: Array<{ categoryName?: string; score?: number }>;
+        boundingBox?: {
+          width?: number;
+          height?: number;
+        };
+      }>,
+      video: HTMLVideoElement,
+    ) => {
+      const frameArea = Math.max(1, (video.videoWidth || 1) * (video.videoHeight || 1));
+      return detections.filter((detection) => {
+        const width = detection.boundingBox?.width ?? 0;
+        const height = detection.boundingBox?.height ?? 0;
+        const areaRatio = (width * height) / frameArea;
+
+        if (areaRatio < CHEATING_OBJECT_EVIDENCE_MIN_AREA_RATIO) return false;
+
+        return (detection.categories || []).some((category) => {
+          const label = (category.categoryName || "").toLowerCase();
+          const score = category.score ?? 0;
+          const isCheatingObject = CHEATING_OBJECT_PATTERN.test(label);
+
+          return isCheatingObject && score >= CHEATING_OBJECT_EVIDENCE_MIN_SCORE;
+        });
+      });
+    },
+    [],
+  );
+
+  const getSuspiciousLabel = useCallback(
+    (
+      detection: {
+        categories?: Array<{ categoryName?: string; score?: number }>;
+      },
+    ) => {
+      const labels = (detection.categories || [])
+        .map((category) => (category.categoryName || "").toLowerCase())
+        .filter(Boolean);
+
+      const findLabel = (matcher: RegExp) => labels.find((label) => matcher.test(label));
+
+      return (
+        findLabel(PHONE_LIKE_PATTERN) ||
+        findLabel(TABLET_LIKE_PATTERN) ||
+        findLabel(LAPTOP_LIKE_PATTERN) ||
+        findLabel(SCREEN_LIKE_PATTERN) ||
+        findLabel(BOOK_LIKE_PATTERN) ||
+        findLabel(HANDHELD_AID_PATTERN) ||
+        labels[0] ||
+        "unknown"
+      );
+    },
+    [],
+  );
+
+  const validateInterviewConditions = useCallback(async (
+    mode: "full" | "faceOnly" | "focusOnly" = "full",
+  ) => {
     if (
       !videoRef.current ||
       !cameraActiveRef.current ||
@@ -416,14 +760,20 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       return { ok: false, message: "Camera feed is not ready yet." };
     }
 
+      if (mode === "focusOnly") {
+        if (document.visibilityState === "hidden" || !document.hasFocus()) {
+          return {
+            ok: false,
+            message: "Tab switching is still detected. Return to the interview tab before resuming.",
+          };
+        }
+
+      return { ok: true, message: "" };
+    }
+
     try {
-      const detections = await faceapi
-        .detectAllFaces(
-          video,
-          new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }),
-        )
-        .withFaceLandmarks()
-        .withFaceExpressions();
+      const primaryDetections = await detectFacesForMode(video, "validation");
+      const detections = await maybeRunFaceFallback(video, primaryDetections);
 
       if (detections.length > 1) {
         return {
@@ -432,12 +782,16 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         };
       }
 
+      if (mode === "faceOnly") {
+        return { ok: true, message: "" };
+      }
+
       if (objectDetector) {
         const results = await objectDetector.detectForVideo(video, performance.now());
         const suspicious = getSuspiciousDetections(results.detections, video);
 
         if (suspicious.length > 0) {
-          const labels = [...new Set(suspicious.map((d) => d.categories?.[0]?.categoryName || "unknown"))];
+          const labels = [...new Set(suspicious.map((d) => getSuspiciousLabel(d)))];
           setSuspiciousObjectsList(labels);
           return {
             ok: false,
@@ -454,18 +808,35 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         message: "Unable to recheck the camera right now. Please try again.",
       };
     }
-  }, [getSuspiciousDetections]);
+  }, [
+    detectFacesForMode,
+    getSuspiciousDetections,
+    getSuspiciousLabel,
+    maybeRunFaceFallback,
+  ]);
 
   const handleFixedIt = async () => {
-    const validation = await validateInterviewConditions();
+    setIsResumeChecking(true);
+    setResumeValidationMessage("");
+
+    const validationMode =
+      activeViolation === "multiFace"
+        ? "faceOnly"
+        : activeViolation === "tabSwitch"
+          ? "focusOnly"
+          : "full";
+    const validation = await validateInterviewConditions(validationMode);
+    setIsResumeChecking(false);
 
     if (!validation.ok) {
       setIsPaused(true);
       isPausedRef.current = true;
-      setMessages((prev) => [...prev, { text: validation.message, isBot: true }]);
+      setResumeValidationMessage(validation.message);
       return;
     }
 
+    setActiveViolation(null);
+    setResumeValidationMessage("");
     setShowMultiFaceModal(false);
     setShowSuspiciousObjectModal(false);
     setShowTabSwitchModal(false);
@@ -477,7 +848,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
       if (lastInterviewQuestionRef.current.trim()) {
         resumedMessages.push({
-          text: `Question again: ${lastInterviewQuestionRef.current}`,
+          text: `Let's continue from where we paused. ${lastInterviewQuestionRef.current}`,
           isBot: true,
         });
       }
@@ -543,12 +914,22 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
           // A GPU is a processor designed to handle many calculations at the same time, especially for graphics and heavy computations like AI and machine learning.
           //modelAssetPath This loads the trained object detection model file.
-          scoreThreshold: 0.35,
-          maxResults: 10,
+          scoreThreshold: 0.1,
+          maxResults: 8,
           runningMode: "VIDEO",
         });
+        setObjectDetectionUnavailable(false);
+        setIsObjectDetectorReady(true);
       } catch (e) {
         console.error("Object detector init failed", e);
+        setObjectDetectionUnavailable(true);
+        setMessages((p) => [
+          ...p,
+          {
+            text: "Object-based anti-cheating checks are limited right now. Face and tab monitoring will continue.",
+            isBot: true,
+          },
+        ]);
       }
     })();
 
@@ -562,100 +943,136 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   // ────────────────────────────────────────────────
   //useCallback is a React Hook used to memoize (remember) a function so that it is not recreated on every render. 🔁
   const detectEmotions = useCallback(async () => {
-    if (!videoRef.current || !cameraActiveRef.current || interviewEndedRef.current || !isModelReadyRef.current) {
-      requestAnimationFrame(detectEmotions);
+    if (!cameraActiveRef.current || interviewEndedRef.current || isPausedRef.current) {
       return;
     }
 
-    if (isPausedRef.current) {
-      requestAnimationFrame(detectEmotions);
+    if (!isModelReadyRef.current) {
+      scheduleEmotionDetection(220);
       return;
     }
 
-    const now = performance.now();
-    if (now - lastFaceDetectionTimeRef.current < FACE_DETECTION_INTERVAL_MS) {
-      requestAnimationFrame(detectEmotions);
+    if (!videoRef.current) {
+      scheduleEmotionDetection(220);
       return;
     }
 
     if (isFaceDetectionRunningRef.current) {
-      requestAnimationFrame(detectEmotions);
+      scheduleEmotionDetection(140);
       return;
     }
 
     isFaceDetectionRunningRef.current = true;
-    lastFaceDetectionTimeRef.current = now;
 
     const video = videoRef.current;
     if (video.paused || video.ended || video.videoWidth === 0) {
       isFaceDetectionRunningRef.current = false;
-      requestAnimationFrame(detectEmotions);
+      scheduleEmotionDetection(220);
       return;
     }
 
-    try {
-      const detections = await faceapi
-        .detectAllFaces(
-          video,
-          new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }),
-        )
-        .withFaceLandmarks()
-        .withFaceExpressions();
+    const detectionStartedAt = performance.now();
 
-      setFacesDetected(detections.length);
+    try {
+      const primaryDetections = await detectFacesForMode(video, "live");
+      const detections = await maybeRunFaceFallback(video, primaryDetections);
+
+      const now = performance.now();
+      const shouldUpdateEmotionUi =
+        now - lastEmotionUiUpdateRef.current >= EMOTION_UI_UPDATE_INTERVAL_MS;
+
+      if (shouldUpdateEmotionUi) {
+        setFacesDetected((prev) => (prev === detections.length ? prev : detections.length));
+      }
 
       if (detections.length > 1) {
-        proctoringIncidentRef.current.multiFace += 1;
-        setIsPaused(true);
-        isPausedRef.current = true;
-        setShowMultiFaceModal(true);
-        setShowSuspiciousObjectModal(false);
-        setShowTabSwitchModal(false);
-        setMessages((p) => [
-          ...p,
-          {
-            text: "Multiple faces detected. Please ensure only you are visible before resuming.",
-            isBot: true,
-          },
-        ]);
+        multiFaceFrameStreakRef.current += 1;
+
+        const nowMs = Date.now();
+        const shouldAlertMultiFace =
+          !isPausedRef.current &&
+          multiFaceFrameStreakRef.current >= MULTI_FACE_SUSPICIOUS_CONSECUTIVE_FRAMES &&
+          nowMs - lastMultiFaceAlertTimeRef.current > MULTI_FACE_ALERT_COOLDOWN_MS;
+
+        if (shouldAlertMultiFace) {
+          proctoringIncidentRef.current.multiFace += 1;
+          pauseInterviewForViolation("multiFace");
+          lastMultiFaceAlertTimeRef.current = nowMs;
+          multiFaceFrameStreakRef.current = 0;
+        }
       } else if (detections.length === 1) {
+        multiFaceFrameStreakRef.current = 0;
         const expr = detections[0].expressions;
-        const smile = Math.round((expr.happy || 0) * 100);
+        const smile = clampPercent(Math.round((expr.happy || 0) * 100));
         const stressRaw =
           (expr.angry || 0) +
           (expr.sad || 0) +
           (expr.fearful || 0) +
           (expr.disgusted || 0);
-        const stress = Math.round(stressRaw * 25);
-        const conf = Math.round((expr.neutral || 0) * 100 - stress * 0.4);
+        const stress = clampPercent(Math.round(stressRaw * 25));
+        const conf = clampPercent(Math.round((expr.neutral || 0) * 100 - stress * 0.4));
 
-        setSmileScore(smile);
-        setStressScore(stress);
-        setConfidenceScore(conf);
+        if (shouldUpdateEmotionUi) {
+          setSmileScore((prev) => (prev === smile ? prev : smile));
+          setStressScore((prev) => (prev === stress ? prev : stress));
+          setConfidenceScore((prev) => (prev === conf ? prev : conf));
+        }
 
-        emotionSamplesRef.current = [
-          ...emotionSamplesRef.current.slice(-119),
-          { smile, stress, conf, timestamp: Date.now() },
-        ];
+        emotionSamplesRef.current.push({ smile, stress, conf, timestamp: Date.now() });
+        if (emotionSamplesRef.current.length > 120) {
+          emotionSamplesRef.current.splice(0, emotionSamplesRef.current.length - 120);
+        }
       } else {
-        setSmileScore(0);
-        setStressScore(0);
-        setConfidenceScore(30);
+        multiFaceFrameStreakRef.current = 0;
+        if (shouldUpdateEmotionUi) {
+          setSmileScore((prev) => (prev === 0 ? prev : 0));
+          setStressScore((prev) => (prev === 0 ? prev : 0));
+          setConfidenceScore((prev) => (prev === 30 ? prev : 30));
+        }
+      }
+
+      if (shouldUpdateEmotionUi) {
+        lastEmotionUiUpdateRef.current = now;
       }
     } catch (err) {
       console.error("Emotion detection error", err);
     } finally {
       isFaceDetectionRunningRef.current = false;
+
+      const detectionDurationMs = performance.now() - detectionStartedAt;
+      const targetInterval = clampInterval(
+        Math.max(FACE_DETECTION_INTERVAL_MS, detectionDurationMs * 1.1),
+        FACE_DETECTION_MIN_INTERVAL_MS,
+        FACE_DETECTION_MAX_INTERVAL_MS,
+      );
+
+      dynamicEmotionIntervalRef.current = clampInterval(
+        dynamicEmotionIntervalRef.current * 0.55 + targetInterval * 0.45,
+        FACE_DETECTION_MIN_INTERVAL_MS,
+        FACE_DETECTION_MAX_INTERVAL_MS,
+      );
     }
 
-    requestAnimationFrame(detectEmotions);
-  }, []);
+    if (
+      cameraActiveRef.current &&
+      !interviewEndedRef.current &&
+      isModelReadyRef.current &&
+      !isPausedRef.current
+    ) {
+      scheduleEmotionDetection();
+    }
+  }, [
+    detectFacesForMode,
+    maybeRunFaceFallback,
+    pauseInterviewForViolation,
+    scheduleEmotionDetection,
+  ]);
 
   const calculateFinalPresenceScore = () => {
     const emotionSamples = emotionSamplesRef.current;
 
     if (emotionSamples.length === 0) {
-      return 65; // Neutral default (not too low)
+      return 0;
     }
 
     // Take last 70% of samples to ignore initial nervousness
@@ -673,18 +1090,29 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       relevantSamples.reduce((sum, s) => sum + s.conf, 0) /
       relevantSamples.length;
 
-    // Simple weighted formula (you can tweak weights easily)
-    const presenceScore = Math.round(
-      avgSmile * 0.45 + (100 - avgStress) * 0.35 + avgConfidence * 0.2,
-    );
+    const calmScore = clampPercent(100 - avgStress);
 
-    // Clamp between 30 and 98
-    return Math.max(30, Math.min(98, presenceScore));
+    // Coverage factor avoids inflated scores when detections are too sparse.
+    const sampleCoverage = Math.min(1, emotionSamples.length / 45);
+
+    // Rebalanced weights reduce passive high scores from low stress alone.
+    const rawPresenceScore =
+      avgSmile * 0.4 + calmScore * 0.15 + avgConfidence * 0.45;
+
+    const coverageAdjustedScore = Math.round(rawPresenceScore * sampleCoverage);
+
+    if (emotionSamples.length < 15) {
+      return Math.max(0, Math.min(35, coverageAdjustedScore));
+    }
+
+    return Math.max(0, Math.min(98, coverageAdjustedScore));
   };
 
   const persistInterviewContext = useCallback(() => {
     const activeTopic = cleanTopic || customTopic || manualTopic.trim() || "General";
     const presence = calculateFinalPresenceScore();
+
+    setFinalScore(presence);
 
     localStorage.setItem("presenceScore", String(presence));
     localStorage.setItem(
@@ -704,103 +1132,202 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   }, [cleanTopic, customTopic, manualTopic, selectedDifficulty, selectedDuration, sessionId]);
 
   useEffect(() => {
-    if (cameraActive && isModelReady) detectEmotions();
-  }, [cameraActive, isModelReady, detectEmotions]);
+    stopEmotionDetectionLoop();
+    dynamicEmotionIntervalRef.current = FACE_DETECTION_INTERVAL_MS;
+
+    if (cameraActive && isModelReady && !interviewEnded && !isPaused) {
+      scheduleEmotionDetection(0);
+    }
+
+    return () => stopEmotionDetectionLoop();
+  }, [cameraActive, isModelReady, interviewEnded, isPaused, detectEmotions, scheduleEmotionDetection, stopEmotionDetectionLoop]);
 
   // ────────────────────────────────────────────────
   //  Object Detection (cheating prevention)
   // ────────────────────────────────────────────────
   const detectObjects = useCallback(async () => {
-    if (
-      !videoRef.current ||
-      !objectDetector ||
-      !cameraActiveRef.current ||
-      interviewEndedRef.current
-    ) {
-      requestAnimationFrame(detectObjects);
+    if (!cameraActiveRef.current || interviewEndedRef.current || isPausedRef.current) {
       return;
     }
 
-    if (isPausedRef.current) {
-      requestAnimationFrame(detectObjects);
+    if (!isObjectDetectorReadyRef.current || !objectDetector) {
+      scheduleObjectDetection(260);
       return;
     }
 
-    const now = performance.now();
-    if (now - lastObjectDetectionTimeRef.current < OBJECT_DETECTION_INTERVAL_MS) {
-      requestAnimationFrame(detectObjects);
+    if (!videoRef.current) {
+      scheduleObjectDetection(260);
       return;
     }
 
     if (isObjectDetectionRunningRef.current) {
-      requestAnimationFrame(detectObjects);
+      scheduleObjectDetection(180);
       return;
     }
 
     isObjectDetectionRunningRef.current = true;
-    lastObjectDetectionTimeRef.current = now;
+
+    const video = videoRef.current;
+    if (video.paused || video.ended || video.videoWidth === 0) {
+      isObjectDetectionRunningRef.current = false;
+      scheduleObjectDetection(260);
+      return;
+    }
+
+    const detectionStartedAt = performance.now();
 
     try {
       const results = await objectDetector.detectForVideo(
-        videoRef.current,
+        video,
         performance.now(),
       );
-      const suspicious = getSuspiciousDetections(results.detections, videoRef.current);
 
-      const hasBookLikeSuspicious = suspicious.some((d) => {
-        const label = (d.categories?.[0]?.categoryName || "").toLowerCase();
-        return /\bbook\b|\bnotebook\b|\bnotepad\b|\bdiary\b|\bjournal\b/.test(label);
-      });
-      const requiredSuspiciousFrames = hasBookLikeSuspicious
-        ? 2
-        : OBJECT_SUSPICIOUS_CONSECUTIVE_FRAMES;
+      if (debugDetectionMode) {
+        const debugNow = performance.now();
+        if (debugNow - lastDebugObjectUpdateRef.current >= DEBUG_OBJECT_UPDATE_INTERVAL_MS) {
+          const frameArea = Math.max(1, (video.videoWidth || 1) * (video.videoHeight || 1));
+          const rows = results.detections
+            .slice(0, 8)
+            .map((detection) => {
+              const label = detection.categories?.[0]?.categoryName || "unknown";
+              const score = ((detection.categories?.[0]?.score ?? 0) * 100).toFixed(1);
+              const boxW = detection.boundingBox?.width ?? 0;
+              const boxH = detection.boundingBox?.height ?? 0;
+              const areaRatio = (((boxW * boxH) / frameArea) * 100).toFixed(2);
+              return `${label} | conf ${score}% | area ${areaRatio}%`;
+            });
 
-      if (suspicious.length > 0) {
+          setDebugObjectRows(rows.length > 0 ? rows : ["No objects detected in frame"]);
+          lastDebugObjectUpdateRef.current = debugNow;
+        }
+      }
+
+      const suspicious = getSuspiciousDetections(results.detections, video);
+      const cheatingObjectEvidenceDetections = getCheatingObjectEvidenceDetections(
+        results.detections,
+        video,
+      );
+      const now = Date.now();
+
+      const hasPhoneLikeSuspicious = suspicious.some((detection) =>
+        (detection.categories || []).some((category) => {
+          const label = (category.categoryName || "").toLowerCase();
+          return PHONE_LIKE_PATTERN.test(label);
+        }),
+      );
+
+      const hasBookLikeSuspicious = suspicious.some((detection) =>
+        (detection.categories || []).some((category) => {
+          const label = (category.categoryName || "").toLowerCase();
+          return BOOK_LIKE_PATTERN.test(label);
+        }),
+      );
+      const hasScreenLikeSuspicious = suspicious.some((detection) =>
+        (detection.categories || []).some((category) => {
+          const label = (category.categoryName || "").toLowerCase();
+          return SCREEN_LIKE_PATTERN.test(label) || TABLET_LIKE_PATTERN.test(label);
+        }),
+      );
+
+      cheatingObjectEvidenceHitsRef.current = cheatingObjectEvidenceHitsRef.current.filter(
+        (timestamp) => now - timestamp <= CHEATING_OBJECT_EVIDENCE_WINDOW_MS,
+      );
+
+      if (cheatingObjectEvidenceDetections.length > 0) {
+        cheatingObjectEvidenceHitsRef.current.push(now);
+      }
+
+      const hasCheatingObjectEvidenceAlert =
+        cheatingObjectEvidenceDetections.length > 0 &&
+        cheatingObjectEvidenceHitsRef.current.length >=
+          CHEATING_OBJECT_EVIDENCE_REQUIRED_HITS;
+      const detectionsForAlert =
+        suspicious.length > 0
+          ? suspicious
+          : hasCheatingObjectEvidenceAlert
+            ? cheatingObjectEvidenceDetections
+            : [];
+
+      const requiredSuspiciousFrames =
+        hasPhoneLikeSuspicious || hasScreenLikeSuspicious || hasCheatingObjectEvidenceAlert
+        ? 1
+        : hasBookLikeSuspicious
+          ? 2
+          : OBJECT_SUSPICIOUS_CONSECUTIVE_FRAMES;
+
+      if (detectionsForAlert.length > 0) {
         suspiciousFrameStreakRef.current += 1;
       } else {
         suspiciousFrameStreakRef.current = 0;
       }
 
       if (
-        suspicious.length > 0 &&
+        detectionsForAlert.length > 0 &&
         !isPausedRef.current &&
         suspiciousFrameStreakRef.current >= requiredSuspiciousFrames
       ) {
-        const now = Date.now();
         if (now - lastObjectAlertTimeRef.current > OBJECT_ALERT_COOLDOWN_MS) {
           proctoringIncidentRef.current.suspiciousObject += 1;
           const labels = [
             ...new Set(
-              suspicious.map((d) => d.categories?.[0]?.categoryName || "unknown"),
+              detectionsForAlert.map((d) => getSuspiciousLabel(d)),
             ),
           ];
-          setSuspiciousObjectsList(labels);
-          setShowSuspiciousObjectModal(true);
-          setIsPaused(true);
-          isPausedRef.current = true;
-          setMessages((p) => [
-            ...p,
-            {
-              text: `Suspicious object(s) detected: ${labels.join(", ")}. Please remove them.`,
-              isBot: true,
-            },
-          ]);
+          pauseInterviewForViolation(
+            "suspiciousObject",
+            labels,
+          );
           lastObjectAlertTimeRef.current = now;
           suspiciousFrameStreakRef.current = 0;
+          cheatingObjectEvidenceHitsRef.current = [];
         }
       }
     } catch (err) {
       console.error("Object detection error", err);
     } finally {
       isObjectDetectionRunningRef.current = false;
+
+      const detectionDurationMs = performance.now() - detectionStartedAt;
+      const targetInterval = clampInterval(
+        Math.max(OBJECT_DETECTION_INTERVAL_MS, detectionDurationMs * 1.15),
+        OBJECT_DETECTION_MIN_INTERVAL_MS,
+        OBJECT_DETECTION_MAX_INTERVAL_MS,
+      );
+
+      dynamicObjectIntervalRef.current = clampInterval(
+        dynamicObjectIntervalRef.current * 0.55 + targetInterval * 0.45,
+        OBJECT_DETECTION_MIN_INTERVAL_MS,
+        OBJECT_DETECTION_MAX_INTERVAL_MS,
+      );
     }
 
-    requestAnimationFrame(detectObjects);
-  }, [getSuspiciousDetections]);
+    if (
+      cameraActiveRef.current &&
+      !interviewEndedRef.current &&
+      !isPausedRef.current &&
+      objectDetector
+    ) {
+      scheduleObjectDetection();
+    }
+  }, [
+    debugDetectionMode,
+    getCheatingObjectEvidenceDetections,
+    getSuspiciousDetections,
+    getSuspiciousLabel,
+    pauseInterviewForViolation,
+    scheduleObjectDetection,
+  ]);
 
   useEffect(() => {
-    if (cameraActive) detectObjects();
-  }, [cameraActive, detectObjects]);
+    stopObjectDetectionLoop();
+    dynamicObjectIntervalRef.current = OBJECT_DETECTION_INTERVAL_MS;
+
+    if (cameraActive && !interviewEnded && !isPaused && isObjectDetectorReady) {
+      scheduleObjectDetection(0);
+    }
+
+    return () => stopObjectDetectionLoop();
+  }, [cameraActive, interviewEnded, isPaused, isObjectDetectorReady, detectObjects, scheduleObjectDetection, stopObjectDetectionLoop]);
 
   // ────────────────────────────────────────────────
   //  Pause / Resume logic
@@ -819,18 +1346,9 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       if (isPausedRef.current) return;
 
       if (document.visibilityState === "hidden" || !document.hasFocus()) {
-        setShowMultiFaceModal(false);
-        setShowSuspiciousObjectModal(false);
-        setShowTabSwitchModal(true);
-        setIsPaused(true);
-        isPausedRef.current = true;
-        setMessages((prev) => [
-          ...prev,
-          {
-            text: "Tab switch or window focus loss detected. Return to the interview tab to continue.",
-            isBot: true,
-          },
-        ]);
+        pauseInterviewForViolation(
+          "tabSwitch",
+        );
       }
     };
 
@@ -841,7 +1359,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       window.removeEventListener("blur", handleDisturbance);
       document.removeEventListener("visibilitychange", handleDisturbance);
     };
-  }, []);
+  }, [pauseInterviewForViolation]);
 
   // ────────────────────────────────────────────────
   //  Initial message when topic is passed via props
@@ -1209,11 +1727,13 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       const data = await res.json();
 
       const replyText = String(data.reply || "").trim();
-      if (
-        replyText &&
-        replyText.includes("?") &&
-        !replyText.toLowerCase().includes("interview complete")
-      ) {
+      const normalizedReply = replyText.toLowerCase();
+      const isCompletionReply =
+        normalizedReply.includes("interview complete") ||
+        normalizedReply.includes("interview ended") ||
+        normalizedReply.includes("ended");
+
+      if (replyText && !isCompletionReply) {
         lastInterviewQuestionRef.current = replyText;
       }
 
@@ -1380,44 +1900,20 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const activeTopicHeading = cleanTopic || customTopic || manualTopic.trim() || "Interview";
   const activeDifficultyHeading = selectedDifficulty || "Medium";
 
-  if (isLaptopDevice === null) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-purple-50 dark:from-slate-950 dark:to-purple-950/40 flex items-center justify-center px-4">
-        <p className="text-muted-foreground">Checking device compatibility...</p>
-      </div>
-    );
-  }
-
-  if (isLaptopDevice === false) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-purple-50 dark:from-slate-950 dark:to-purple-950/40 flex items-center justify-center px-4">
-        <Card className="max-w-xl rounded-3xl border border-red-200/60 bg-white/95 p-8 text-center shadow-2xl dark:border-red-500/20 dark:bg-black/80 md:p-10">
-          <h1 className="text-3xl font-bold text-red-600 dark:text-red-400">Laptop Required</h1>
-          <p className="mt-4 text-base leading-7 text-muted-foreground">
-            The interview can only be conducted on laptops or desktops. Please reopen this website on a laptop to continue.
-          </p>
-          <p className="mt-3 text-sm text-muted-foreground">
-            Mobile devices are not supported for the live interview, timer, camera, and proctoring flow.
-          </p>
-        </Card>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-purple-50 dark:from-slate-950 dark:to-purple-950/40">
-      <div className="container max-w-7xl mx-auto p-6">
-        <div className="flex justify-between items-center mb-6">
-          <div className="flex items-center gap-4">
-            <Badge className="px-5 py-2 text-lg bg-green-100 text-green-700 dark:bg-green-900/50">
+      <div className="container mx-auto max-w-7xl px-4 py-4 pb-24 sm:px-6 lg:px-8">
+        <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+            <Badge className="px-4 py-2 text-sm bg-green-100 text-green-700 dark:bg-green-900/50 sm:px-5 sm:text-lg">
               <div className="w-3 h-3 bg-green-500 rounded-full mr-2 animate-pulse" />
               Live Interview
             </Badge>
-            <h2 className="text-2xl font-bold">{`${activeTopicHeading} (${activeDifficultyHeading})`}</h2>
+            <h2 className="text-xl font-bold sm:text-2xl">{`${activeTopicHeading} (${activeDifficultyHeading})`}</h2>
           </div>
 
-          <div className="flex items-center gap-6">
-            <div className="flex gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4 lg:gap-6">
+            <div className="flex flex-wrap gap-3">
               <Button
                 variant="outline"
                 size="lg"
@@ -1466,15 +1962,15 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
           </div>
         )}
         {showInstructions && cleanTopic && (
-          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-6">
-            <Card className="max-w-3xl w-full max-h-[90vh] overflow-y-auto bg-white/95 dark:bg-slate-900/95 border border-purple-500/30 rounded-3xl shadow-2xl p-10">
-              <h2 className="text-3xl font-bold text-center mb-8 bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm sm:p-6">
+            <Card className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-3xl border border-purple-500/30 bg-white/95 p-6 shadow-2xl dark:bg-slate-900/95 sm:p-10">
+              <h2 className="mb-6 bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-center text-2xl font-bold text-transparent sm:mb-8 sm:text-3xl">
                 Important Interview Instructions & Rules
               </h2>
 
-              <div className="space-y-8 text-lg leading-relaxed">
+              <div className="space-y-6 text-base leading-relaxed sm:space-y-8 sm:text-lg">
                 <div>
-                  <h3 className="text-xl font-semibold mb-3 text-purple-700 dark:text-purple-400">
+                  <h3 className="mb-3 text-lg font-semibold text-purple-700 dark:text-purple-400 sm:text-xl">
                     Welcome to your AI-Powered Interview
                   </h3>
                   <p>
@@ -1489,7 +1985,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                 </div>
 
                 <div>
-                  <h3 className="text-xl font-semibold mb-3 text-purple-700 dark:text-purple-400">
+                  <h3 className="mb-3 text-lg font-semibold text-purple-700 dark:text-purple-400 sm:text-xl">
                     What You Need to Do
                   </h3>
                   <ul className="list-disc pl-6 space-y-2">
@@ -1508,7 +2004,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                 </div>
 
                 <div>
-                  <h3 className="text-xl font-semibold mb-3 text-purple-700 dark:text-purple-400">
+                  <h3 className="mb-3 text-lg font-semibold text-purple-700 dark:text-purple-400 sm:text-xl">
                     Rules & Prohibited Actions
                   </h3>
                   <ul className="list-disc pl-6 space-y-2 text-red-600 dark:text-red-400 font-medium">
@@ -1530,7 +2026,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                 </div>
 
                 <div>
-                  <h3 className="text-xl font-semibold mb-3 text-purple-700 dark:text-purple-400">
+                  <h3 className="mb-3 text-lg font-semibold text-purple-700 dark:text-purple-400 sm:text-xl">
                     How Scoring Works
                   </h3>
                   <ul className="list-disc pl-6 space-y-2">
@@ -1543,15 +2039,15 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                   </ul>
                 </div>
 
-                <div className="text-center mt-10">
-                  <p className="text-lg font-medium mb-6">
+                <div className="mt-8 text-center sm:mt-10">
+                  <p className="mb-6 text-base font-medium sm:text-lg">
                     By continuing, you agree to follow all rules and allow
                     real-time monitoring.
                   </p>
 
                   <Button
                     size="lg"
-                    className="px-12 py-7 text-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 shadow-xl"
+                    className="px-8 py-6 text-lg bg-gradient-to-r from-purple-600 to-pink-600 shadow-xl hover:from-purple-700 hover:to-pink-700 sm:px-12 sm:py-7 sm:text-xl"
                     onClick={() => setShowInstructions(false)}
                   >
                     I Understand & Proceed
@@ -1563,12 +2059,12 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         )}
         {/* ─── Configuration Screen ─── shown until interview starts ─── */}
         {!interviewStarted && !skipSetupScreen && (
-          <Card className="mb-10 p-8 bg-white/90 dark:bg-black/70 backdrop-blur-xl border border-gray-200/50 dark:border-white/10 rounded-3xl shadow-2xl max-w-4xl mx-auto">
-            <h3 className="text-2xl font-bold text-center mb-8 bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+          <Card className="mx-auto mb-10 max-w-4xl rounded-3xl border border-gray-200/50 bg-white/90 p-6 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-black/70 sm:p-8">
+            <h3 className="mb-8 bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-center text-2xl font-bold text-transparent">
               Let's set up your interview
             </h3>
 
-            <div className="grid md:grid-cols-2 gap-8 mb-10">
+            <div className="mb-10 grid gap-6 lg:grid-cols-2">
               <div>
                 <label className="block text-base font-medium mb-3">
                   Difficulty Level
@@ -1627,7 +2123,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
               )}
             </div>
 
-            <div className="mt-8 grid gap-6 md:grid-cols-2">
+            <div className="mt-8 grid gap-6 lg:grid-cols-2">
               <div>
                 <label className="mb-2 block text-base font-medium">
                   Topic
@@ -1686,9 +2182,9 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
           </Card>
         )}
 
-        <div className="flex gap-6">
+        <div className="flex flex-col gap-6 xl:flex-row">
           {/* LEFT: Chat */}
-          <Card className="relative flex-[0.7] h-[85vh] flex flex-col bg-white/90 dark:bg-black/70 backdrop-blur-xl border border-gray-200/50 dark:border-white/10">
+          <Card className="relative flex min-h-[36rem] flex-col bg-white/90 backdrop-blur-xl border border-gray-200/50 dark:bg-black/70 dark:border-white/10 xl:h-[85vh] xl:min-h-0 xl:flex-[0.68]">
             {/* {cameraActive && (
               <div
                 className="absolute top-3 right-3 bg-black/65 text-white text-sm px-3 py-2 rounded-md font-mono z-10 shadow"
@@ -1708,7 +2204,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                 </div>
               </div>
             )} */}
-            <div className="p-6 border-b">
+            <div className="border-b p-4 sm:p-6">
               <div className="flex items-center gap-4">
                 <Avatar>
                   <AvatarFallback className="bg-gradient-to-br from-purple-600 to-pink-600 text-white text-xl font-bold">
@@ -1727,7 +2223,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
             <div
               ref={chatScrollRef}
               onScroll={handleChatScroll}
-              className="flex-1 overflow-y-auto px-6 py-4 space-y-4"
+              className="flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-6"
             >
               {messages.map((msg, index) => (
                 <div
@@ -1745,7 +2241,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                     className={`max-w-[70%] ${msg.isBot
                       ? "bg-gray-100 dark:bg-white/10"
                       : "bg-gradient-to-r from-purple-600 to-pink-600 text-white"
-                      } px-4 py-2 rounded-2xl shadow-lg text-base whitespace-pre-line`}
+                      } px-4 py-2 rounded-2xl shadow-lg text-base whitespace-pre-line sm:max-w-[72%]`}
                   >
                     {msg.text}
                   </div>
@@ -1760,7 +2256,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
               ))}
             </div>
             {showNewMessagesButton && (
-              <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-20">
+              <div className="absolute bottom-20 left-1/2 z-20 -translate-x-1/2 sm:bottom-24">
                 <Button
                   type="button"
                   size="sm"
@@ -1832,10 +2328,10 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
               )}
 
             </div> */}
-            <div className="p-4 border-t">
+            <div className="border-t p-4">
               <form
                 onSubmit={handleSubmit}
-                className="flex items-center gap-2 bg-[#111827] border border-gray-700 rounded-2xl px-3 py-2 shadow-lg"
+                className="flex flex-col gap-2 rounded-2xl border border-gray-700 bg-[#111827] px-3 py-2 shadow-lg sm:flex-row sm:items-center"
               >
 
                 {/* Voice Input */}
@@ -1843,7 +2339,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                   type="button"
                   onClick={toggleVoiceInput}
                   disabled={!interviewStarted || isPaused || interviewEnded}
-                  className={`p-2 rounded-lg ${isListening
+                  className={`self-start rounded-lg p-2 ${isListening
                     ? "bg-red-600 animate-pulse"
                     : "hover:bg-white/10"
                     }`}
@@ -1897,7 +2393,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                         : "Complete setup and start interview"
                   }
                   disabled={!interviewStarted || isPaused || interviewEnded}
-                  className="flex-1 bg-transparent outline-none resize-none text-white px-2"
+                  className="min-h-11 flex-1 resize-none bg-transparent px-2 text-white outline-none"
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
@@ -1912,7 +2408,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                   disabled={
                     !input.trim() || isLoading || interviewEnded || isPaused
                   }
-                  className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 px-3 py-2 rounded-lg"
+                  className="self-end rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 px-3 py-2 hover:from-purple-700 hover:to-pink-700 sm:self-auto"
                 >
                   <Send className="h-5 w-5 text-white" />
                 </button>
@@ -1931,13 +2427,13 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
 
 
-          <div className="flex-[0.3] flex flex-col gap-4">
+          <div className="flex flex-col gap-4 xl:flex-[0.32]">
 
             {/* TOP: Stats + Timer */}
-            <div className="bg-[#111827] rounded-xl p-4 shadow-md flex justify-between items-center">
+            <div className="flex flex-col gap-3 rounded-xl bg-[#111827] p-4 shadow-md sm:flex-row sm:items-center sm:justify-between">
 
               {/* Stats */}
-              {cameraActive &&
+              {cameraActive && (
                 <div className="text-sm space-y-1">
                   <p>😊 Smile: {smileScore.toFixed(0)}%</p>
                   <p className={stressScore > 60 ? "text-red-400" : ""}>
@@ -1946,8 +2442,13 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                   <p className={confidenceScore > 60 ? "text-blue-400" : ""}>
                     💪 Conf: {confidenceScore.toFixed(0)}%
                   </p>
+                  {objectDetectionUnavailable && (
+                    <p className="text-amber-300">
+                      Suspicious object checks are limited on this device.
+                    </p>
+                  )}
                 </div>
-              }
+              )}
 
               {/* Timer */}
               {interviewStarted && timeLeft !== null && (
@@ -1959,8 +2460,8 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
             </div>
 
             {/* CAMERA */}
-            <Card className="rounded-2xl overflow-hidden shadow-2xl bg-gray-900 relative">
-              <div className="relative aspect-video h-[220px]">
+            <Card className="relative overflow-hidden rounded-2xl bg-gray-900 shadow-2xl">
+              <div className="relative aspect-video min-h-[220px] sm:min-h-[260px]">
 
                 <video
                   ref={videoRef}
@@ -2004,6 +2505,25 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
           </div>
         </div>
+        {debugDetectionMode && (
+          <Card className="mt-4 rounded-2xl border border-amber-500/40 bg-black/80 p-4 text-sm text-amber-100 backdrop-blur-xl">
+            <p className="mb-2 font-semibold text-amber-300">
+              Debug Detection Mode (temporary)
+            </p>
+            <p className="mb-3 text-xs text-amber-200/80">
+              Raw object labels and confidences from the live detector.
+            </p>
+            <div className="max-h-44 space-y-1 overflow-y-auto font-mono text-xs leading-5">
+              {debugObjectRows.length > 0 ? (
+                debugObjectRows.map((row, index) => (
+                  <p key={`${row}-${index}`}>{row}</p>
+                ))
+              ) : (
+                <p>No debug frames yet...</p>
+              )}
+            </div>
+          </Card>
+        )}
         <div className="mt-4">
           <Card className="rounded-2xl border border-cyan-500/30 bg-white/5 p-5 backdrop-blur-xl">
             <div className="mb-3 flex items-center gap-2">
@@ -2017,7 +2537,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
               onChange={(e) => setCodeInput(e.target.value)}
               onKeyDown={handleCodeTextareaKeyDown}
               placeholder="Write your Bash/script answer here..."
-              className="min-h-60 resize-y bg-background font-mono text-sm"
+              className="min-h-52 resize-y bg-background font-mono text-sm sm:min-h-60"
               disabled={interviewEnded}
             />
 
@@ -2048,32 +2568,36 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       {/* Pause modal – same style */}
       {
         (showMultiFaceModal || showSuspiciousObjectModal || showTabSwitchModal) && (
-          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 backdrop-blur-sm">
-            <Card className="p-10 max-w-lg text-center bg-white/95 dark:bg-slate-900/95 border border-purple-500/30 rounded-3xl shadow-2xl">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/78">
+            <Card className="max-w-lg rounded-3xl border border-purple-500/30 bg-white p-10 text-center shadow-xl dark:bg-slate-900">
               <h2 className="text-3xl font-bold text-red-600 mb-6">
                 {showMultiFaceModal
                   ? "Multiple Faces Detected"
                   : showSuspiciousObjectModal
                     ? "Suspicious Object Detected"
-                    : "Window Focus Lost"}
+                    : "Tab Switching Detected"}
               </h2>
               <p className="text-xl mb-8 leading-relaxed">
                 {showMultiFaceModal
                   ? "Please make sure only you are visible during the interview."
                   : showSuspiciousObjectModal
                     ? `Please remove: ${suspiciousObjectsList.join(", ")} from view.`
-                    : "Return to the interview tab and keep the page visible while you continue."}
+                    : "Please return to the interview tab and keep it visible before continuing."}
               </p>
               <p className="text-lg text-muted-foreground mb-10">
-                Type <strong>"yes"</strong> or <strong>"ok"</strong> to resume
+                Click <strong>I've Fixed It</strong> to recheck and resume.
               </p>
+              {resumeValidationMessage && (
+                <p className="mb-6 text-sm text-red-500">{resumeValidationMessage}</p>
+              )}
               <Button
                 size="lg"
                 type="button"
                 onClick={handleFixedIt}
+                disabled={isResumeChecking}
                 className="px-12 py-7 text-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
               >
-                I've Fixed It
+                {isResumeChecking ? "Checking..." : "I've Fixed It"}
               </Button>
             </Card>
           </div>
@@ -2081,10 +2605,12 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       }
 
       {/* Exit button */}
-      <button className="rounded-lg text-black bg-slate-500 hover:bg-slate-600 w-28 h-12 fixed bottom-8 right-8 flex items-center justify-center shadow-lg pl-3 text-base font-medium">
-        <Link href="/congratulations">Exit</Link>
-        <MoveRight className="ml-3 h-5 w-5" />
-      </button>
+      <Button asChild className="fixed bottom-4 right-4 h-11 w-24 rounded-lg bg-slate-500 pl-3 text-base font-medium text-black shadow-lg hover:bg-slate-600 sm:bottom-8 sm:right-8 sm:h-12 sm:w-28">
+        <Link href="/congratulations" aria-label="Exit interview">
+          Exit
+          <MoveRight className="ml-3 h-5 w-5" />
+        </Link>
+      </Button>
       {
         resumeText && (
           <Badge variant="outline" className="ml-2 bg-green-950 text-green-300">

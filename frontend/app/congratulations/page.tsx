@@ -121,6 +121,8 @@ export default function CongratulationPage() {
         }
 
         const candidateName = (user?.username || user?.email?.split("@")[0] || "Candidate").trim();
+        const candidateId = user?._id ? String(user._id) : undefined;
+        const candidateEmail = user?.email ? String(user.email).trim().toLowerCase() : undefined;
         const evalRes = await fetch(`${API_BASE_URL}/api/evaluate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -130,6 +132,8 @@ export default function CongratulationPage() {
             difficulty: parsedContext.difficulty || "Medium",
             presenceScore: safePresence,
             candidateName,
+            candidateId,
+            candidateEmail,
             proctoring: {
               multiFace: Number(parsedContext.proctoring?.multiFace || 0),
               suspiciousObject: Number(parsedContext.proctoring?.suspiciousObject || 0),
@@ -352,7 +356,7 @@ export default function CongratulationPage() {
 
             <div className="grid gap-3">
               <Button asChild className="h-12 rounded-xl bg-cyan-500 text-black hover:bg-cyan-400">
-                <Link href="/interview/setup">Take Another Interview</Link>
+                <Link href="/articles">Take Another Interview</Link>
               </Button>
               <Button asChild variant="outline" className="h-12 rounded-xl border-white/30 bg-transparent text-white hover:bg-white/10">
                 <Link href="/">Back to Home</Link>

@@ -28,7 +28,7 @@ const featuredPost = {
 const recentPosts = [
   {
     id: 1,
-    src: "https://tse3.mm.bing.net/th/id/OIP.oR7K377pdzitXWkOEdSIEQHaEK?pid=Api&P=0&h=180",
+    src: "https://images.unsplash.com/photo-1633356122544-f134324a6cee?w=1200&auto=format&fit=crop&q=80",
     title: "React",
     category: "TypeScript",
     date: "Dec 2",
@@ -36,7 +36,7 @@ const recentPosts = [
   },
   {
     id: 2,
-    src: "https://tse3.mm.bing.net/th/id/OIP.SBg2sgLVDVZoNR6fLO2ZKAHaFI?pid=Api&P=0&h=180",
+    src: "https://images.unsplash.com/photo-1526379095098-d400fd0bf935?w=1200&auto=format&fit=crop&q=80",
     title: "Python",
     category: "A11y",
     date: "Nov 30",
@@ -44,7 +44,7 @@ const recentPosts = [
   },
   {
     id: 3,
-    src: "https://tse4.mm.bing.net/th/id/OIP.dkhkj1S3HeuN_Q991Kpb4wHaE7?pid=Api&P=0&h=180",
+    src: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=1200&auto=format&fit=crop&q=80",
     title: "System Design",
     category: "Design",
     date: "Nov 28",
@@ -82,7 +82,7 @@ export default function Home() {
           <div className="absolute -bottom-6 -left-6 h-28 w-28 rounded-full bg-sky-500/25 blur-2xl" />
           <div className="glass-panel animate-floaty overflow-hidden rounded-3xl p-2 shadow-2xl shadow-slate-900/10">
             <img
-              className="h-[420px] w-full rounded-[1.25rem] object-cover"
+              className="h-[260px] w-full rounded-[1.25rem] object-cover sm:h-[340px] lg:h-[420px]"
               src="https://media.istockphoto.com/id/1530973530/photo/software-development-concept.webp?a=1&b=1&s=612x612&w=0&k=20&c=NXxmootfVkI2C_JS5-5p06qMD_ngxJnH8BfLxnoQKP8="
               alt="Software developer workspace"
             />
