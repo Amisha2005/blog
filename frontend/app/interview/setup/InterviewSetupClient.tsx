@@ -13,6 +13,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { AlertTriangle, Camera, MonitorSmartphone, Mic } from "lucide-react";
+import MobileInterviewGuard, {
+  useInterviewMobileBlock,
+} from "../MobileInterviewGuard";
 
 type InterviewSetupClientProps = {
   initialTopic: string;
@@ -55,6 +58,7 @@ export default function InterviewSetupClient({
   initialSource,
 }: InterviewSetupClientProps) {
   const router = useRouter();
+  const { isReady, isMobileBlocked } = useInterviewMobileBlock();
 
   const topicSource: "demo" | "admin" = initialSource === "demo" ? "demo" : "admin";
 
@@ -129,6 +133,14 @@ export default function InterviewSetupClient({
 
     router.push(`/interview/room?${params.toString()}`);
   };
+
+  if (!isReady) {
+    return null;
+  }
+
+  if (isMobileBlocked) {
+    return <MobileInterviewGuard title="Interview Setup Is Disabled On Mobile" />;
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-purple-50 dark:from-slate-950 dark:to-purple-950/40">
