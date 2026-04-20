@@ -61,8 +61,24 @@ interface InterviewRoomProps {
 let objectDetector: ObjectDetector | null = null;
 const PHONE_LIKE_PATTERN =
   /cell phone|mobile phone|smartphone|\bphone\b|iphone|android|telephone handset|cellular telephone|mobile device|handheld phone|wireless phone|portable phone|portable telephone|smart device|communication device/;
+const TABLET_LIKE_PATTERN =
+  /\btablet\b|ipad|tablet computer|galaxy tab|tab device|e-reader|kindle/;
+const BOOK_LIKE_PATTERN =
+  /\bbook\b|\bnotebook\b|\bnotepad\b|\bdiary\b|\bjournal\b|document|paper|sheet of paper|printed page|worksheet|clipboard|binder|notes/;
+const LAPTOP_LIKE_PATTERN = /\blaptop\b|notebook computer/;
+const SCREEN_LIKE_PATTERN =
+  /\bmonitor\b|computer monitor|\btv\b|television|display screen|desktop computer|screen|display/;
 const HANDHELD_AID_PATTERN =
   /remote control|\bcalculator\b|electronic device|portable media player|digital device|handheld device|mobile device|smart device|communication device/;
+const CHEATING_OBJECT_PATTERN = new RegExp(
+  [
+    PHONE_LIKE_PATTERN.source,
+    TABLET_LIKE_PATTERN.source,
+    BOOK_LIKE_PATTERN.source,
+    SCREEN_LIKE_PATTERN.source,
+    HANDHELD_AID_PATTERN.source,
+  ].join("|"),
+);
 
 const normalizeInterviewTopic = (rawTopic: string) => {
   const decoded = decodeURIComponent(rawTopic || "").replace(/\s+/g, " ").trim();
@@ -200,10 +216,10 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const OBJECT_LAPTOP_MIN_AREA_RATIO = 0.1;
   const OBJECT_USER_LAPTOP_BOTTOM_ZONE = 0.7;
   const OBJECT_SUSPICIOUS_CONSECUTIVE_FRAMES = 3;
-  const PHONE_EVIDENCE_WINDOW_MS = 1800;
-  const PHONE_EVIDENCE_REQUIRED_HITS = 1;
-  const PHONE_EVIDENCE_MIN_SCORE = 0.06;
-  const PHONE_EVIDENCE_MIN_AREA_RATIO = 0.0012;
+  const CHEATING_OBJECT_EVIDENCE_WINDOW_MS = 1800;
+  const CHEATING_OBJECT_EVIDENCE_REQUIRED_HITS = 1;
+  const CHEATING_OBJECT_EVIDENCE_MIN_SCORE = 0.06;
+  const CHEATING_OBJECT_EVIDENCE_MIN_AREA_RATIO = 0.0012;
   const EMOTION_UI_UPDATE_INTERVAL_MS = 500;
   const DEBUG_OBJECT_UPDATE_INTERVAL_MS = 450;
   const emotionLoopTimeoutRef = useRef<any>(null);
@@ -230,7 +246,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const lastInterviewQuestionRef = useRef<string>("");
   const lastEmotionUiUpdateRef = useRef<number>(0);
   const lastFaceFallbackCheckRef = useRef<number>(0);
-  const phoneEvidenceHitsRef = useRef<number[]>([]);
+  const cheatingObjectEvidenceHitsRef = useRef<number[]>([]);
 
   const currentTimeRef = useRef<number | null>(null);
 
@@ -527,7 +543,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
   const stopCamera = () => {
     stopDetectionLoops();
-    phoneEvidenceHitsRef.current = [];
+    cheatingObjectEvidenceHitsRef.current = [];
 
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
@@ -573,13 +589,6 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         const height = detection.boundingBox?.height ?? 0;
         const areaRatio = (width * height) / frameArea;
 
-        const tabletLikePattern =
-          /\btablet\b|ipad|tablet computer|galaxy tab|tab device|e-reader|kindle/;
-        const bookLikePattern =
-          /\bbook\b|\bnotebook\b|\bnotepad\b|\bdiary\b|\bjournal\b|document|paper/;
-        const laptopLikePattern = /\blaptop\b|notebook computer/;
-        const screenLikePattern =
-          /\bmonitor\b|computer monitor|\btv\b|television|display screen|desktop computer/;
         let phoneScore = 0;
         let tabletScore = 0;
         let bookScore = 0;
@@ -591,16 +600,16 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
           if (PHONE_LIKE_PATTERN.test(category.label)) {
             phoneScore = Math.max(phoneScore, category.score);
           }
-          if (tabletLikePattern.test(category.label)) {
+          if (TABLET_LIKE_PATTERN.test(category.label)) {
             tabletScore = Math.max(tabletScore, category.score);
           }
-          if (bookLikePattern.test(category.label)) {
+          if (BOOK_LIKE_PATTERN.test(category.label)) {
             bookScore = Math.max(bookScore, category.score);
           }
-          if (laptopLikePattern.test(category.label)) {
+          if (LAPTOP_LIKE_PATTERN.test(category.label)) {
             laptopScore = Math.max(laptopScore, category.score);
           }
-          if (screenLikePattern.test(category.label)) {
+          if (SCREEN_LIKE_PATTERN.test(category.label)) {
             screenScore = Math.max(screenScore, category.score);
           }
           if (HANDHELD_AID_PATTERN.test(category.label)) {
@@ -632,7 +641,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         }
 
         if (isBookLike) {
-          return bookScore >= 0.32 && areaRatio >= 0.012;
+          return bookScore >= 0.26 && areaRatio >= 0.008;
         }
 
         if (isPhone) {
@@ -672,7 +681,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     [],
   );
 
-  const getPhoneEvidenceDetections = useCallback(
+  const getCheatingObjectEvidenceDetections = useCallback(
     (
       detections: Array<{
         categories?: Array<{ categoryName?: string; score?: number }>;
@@ -689,15 +698,14 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         const height = detection.boundingBox?.height ?? 0;
         const areaRatio = (width * height) / frameArea;
 
-        if (areaRatio < PHONE_EVIDENCE_MIN_AREA_RATIO) return false;
+        if (areaRatio < CHEATING_OBJECT_EVIDENCE_MIN_AREA_RATIO) return false;
 
         return (detection.categories || []).some((category) => {
           const label = (category.categoryName || "").toLowerCase();
           const score = category.score ?? 0;
-          const isPhoneLike =
-            PHONE_LIKE_PATTERN.test(label) || HANDHELD_AID_PATTERN.test(label);
+          const isCheatingObject = CHEATING_OBJECT_PATTERN.test(label);
 
-          return isPhoneLike && score >= PHONE_EVIDENCE_MIN_SCORE;
+          return isCheatingObject && score >= CHEATING_OBJECT_EVIDENCE_MIN_SCORE;
         });
       });
     },
@@ -718,10 +726,10 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
       return (
         findLabel(PHONE_LIKE_PATTERN) ||
-        findLabel(/\btablet\b|ipad|tablet computer|galaxy tab|tab device|e-reader|kindle/) ||
-        findLabel(/\blaptop\b|notebook computer/) ||
-        findLabel(/\bmonitor\b|computer monitor|\btv\b|television|display screen|desktop computer/) ||
-        findLabel(/\bbook\b|\bnotebook\b|\bnotepad\b|\bdiary\b|\bjournal\b|document|paper/) ||
+        findLabel(TABLET_LIKE_PATTERN) ||
+        findLabel(LAPTOP_LIKE_PATTERN) ||
+        findLabel(SCREEN_LIKE_PATTERN) ||
+        findLabel(BOOK_LIKE_PATTERN) ||
         findLabel(HANDHELD_AID_PATTERN) ||
         labels[0] ||
         "unknown"
@@ -747,13 +755,13 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       return { ok: false, message: "Camera feed is not ready yet." };
     }
 
-    if (mode === "focusOnly") {
-      if (document.visibilityState === "hidden" || !document.hasFocus()) {
-        return {
-          ok: false,
-          message: "Return to the interview tab and keep the page visible before resuming.",
-        };
-      }
+      if (mode === "focusOnly") {
+        if (document.visibilityState === "hidden" || !document.hasFocus()) {
+          return {
+            ok: false,
+            message: "Tab switching is still detected. Return to the interview tab before resuming.",
+          };
+        }
 
       return { ok: true, message: "" };
     }
@@ -1190,7 +1198,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       }
 
       const suspicious = getSuspiciousDetections(results.detections, video);
-      const phoneEvidenceDetections = getPhoneEvidenceDetections(
+      const cheatingObjectEvidenceDetections = getCheatingObjectEvidenceDetections(
         results.detections,
         video,
       );
@@ -1206,25 +1214,37 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       const hasBookLikeSuspicious = suspicious.some((detection) =>
         (detection.categories || []).some((category) => {
           const label = (category.categoryName || "").toLowerCase();
-          return /\bbook\b|\bnotebook\b|\bnotepad\b|\bdiary\b|\bjournal\b/.test(label);
+          return BOOK_LIKE_PATTERN.test(label);
+        }),
+      );
+      const hasScreenLikeSuspicious = suspicious.some((detection) =>
+        (detection.categories || []).some((category) => {
+          const label = (category.categoryName || "").toLowerCase();
+          return SCREEN_LIKE_PATTERN.test(label) || TABLET_LIKE_PATTERN.test(label);
         }),
       );
 
-      phoneEvidenceHitsRef.current = phoneEvidenceHitsRef.current.filter(
-        (timestamp) => now - timestamp <= PHONE_EVIDENCE_WINDOW_MS,
+      cheatingObjectEvidenceHitsRef.current = cheatingObjectEvidenceHitsRef.current.filter(
+        (timestamp) => now - timestamp <= CHEATING_OBJECT_EVIDENCE_WINDOW_MS,
       );
 
-      if (phoneEvidenceDetections.length > 0) {
-        phoneEvidenceHitsRef.current.push(now);
+      if (cheatingObjectEvidenceDetections.length > 0) {
+        cheatingObjectEvidenceHitsRef.current.push(now);
       }
 
-      const hasPhoneEvidenceAlert =
-        phoneEvidenceDetections.length > 0 &&
-        phoneEvidenceHitsRef.current.length >= PHONE_EVIDENCE_REQUIRED_HITS;
+      const hasCheatingObjectEvidenceAlert =
+        cheatingObjectEvidenceDetections.length > 0 &&
+        cheatingObjectEvidenceHitsRef.current.length >=
+          CHEATING_OBJECT_EVIDENCE_REQUIRED_HITS;
       const detectionsForAlert =
-        suspicious.length > 0 ? suspicious : hasPhoneEvidenceAlert ? phoneEvidenceDetections : [];
+        suspicious.length > 0
+          ? suspicious
+          : hasCheatingObjectEvidenceAlert
+            ? cheatingObjectEvidenceDetections
+            : [];
 
-      const requiredSuspiciousFrames = hasPhoneLikeSuspicious || hasPhoneEvidenceAlert
+      const requiredSuspiciousFrames =
+        hasPhoneLikeSuspicious || hasScreenLikeSuspicious || hasCheatingObjectEvidenceAlert
         ? 1
         : hasBookLikeSuspicious
           ? 2
@@ -1254,7 +1274,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
           );
           lastObjectAlertTimeRef.current = now;
           suspiciousFrameStreakRef.current = 0;
-          phoneEvidenceHitsRef.current = [];
+          cheatingObjectEvidenceHitsRef.current = [];
         }
       }
     } catch (err) {
@@ -1286,7 +1306,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     }
   }, [
     debugDetectionMode,
-    getPhoneEvidenceDetections,
+    getCheatingObjectEvidenceDetections,
     getSuspiciousDetections,
     getSuspiciousLabel,
     isObjectDetectorReady,
@@ -2551,14 +2571,14 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                   ? "Multiple Faces Detected"
                   : showSuspiciousObjectModal
                     ? "Suspicious Object Detected"
-                    : "Window Focus Lost"}
+                    : "Tab Switching Detected"}
               </h2>
               <p className="text-xl mb-8 leading-relaxed">
                 {showMultiFaceModal
                   ? "Please make sure only you are visible during the interview."
                   : showSuspiciousObjectModal
                     ? `Please remove: ${suspiciousObjectsList.join(", ")} from view.`
-                    : "Return to the interview tab and keep the page visible while you continue."}
+                    : "Please return to the interview tab and keep it visible before continuing."}
               </p>
               <p className="text-lg text-muted-foreground mb-10">
                 Click <strong>I've Fixed It</strong> to recheck and resume.
