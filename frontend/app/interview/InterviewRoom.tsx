@@ -372,7 +372,6 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const pauseInterviewForViolation = useCallback(
     (
       type: "multiFace" | "suspiciousObject" | "tabSwitch",
-      message: string,
       labels: string[] = [],
     ) => {
       stopDetectionLoops();
@@ -384,7 +383,6 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       }
       setIsPaused(true);
       isPausedRef.current = true;
-      setMessages((prev) => [...prev, { text: message, isBot: true }]);
     },
     [stopDetectionLoops],
   );
@@ -785,7 +783,6 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     if (!validation.ok) {
       setIsPaused(true);
       isPausedRef.current = true;
-      setMessages((prev) => [...prev, { text: validation.message, isBot: true }]);
       return;
     }
 
@@ -948,10 +945,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
         if (shouldAlertMultiFace) {
           proctoringIncidentRef.current.multiFace += 1;
-          pauseInterviewForViolation(
-            "multiFace",
-            "Multiple faces detected. Please ensure only you are visible before resuming.",
-          );
+          pauseInterviewForViolation("multiFace");
           lastMultiFaceAlertTimeRef.current = nowMs;
           multiFaceFrameStreakRef.current = 0;
         }
@@ -1218,7 +1212,6 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
           ];
           pauseInterviewForViolation(
             "suspiciousObject",
-            `Suspicious object(s) detected: ${labels.join(", ")}. Please remove them.`,
             labels,
           );
           lastObjectAlertTimeRef.current = now;
@@ -1293,7 +1286,6 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       if (document.visibilityState === "hidden" || !document.hasFocus()) {
         pauseInterviewForViolation(
           "tabSwitch",
-          "Tab switch or window focus loss detected. Return to the interview tab to continue.",
         );
       }
     };
