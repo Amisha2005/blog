@@ -68,8 +68,6 @@ const BOOK_LIKE_PATTERN =
 const LAPTOP_LIKE_PATTERN = /\blaptop\b|notebook computer/;
 const SCREEN_LIKE_PATTERN =
   /\bmonitor\b|computer monitor|\btv\b|television|display screen|desktop computer|screen|display/;
-const GENERIC_DEVICE_PATTERN =
-  /electronic device|digital device|handheld device|mobile device|smart device|communication device/;
 const HANDHELD_AID_PATTERN =
   /remote control|\bcalculator\b|portable media player/;
 const CHEATING_OBJECT_PATTERN = new RegExp(
@@ -78,7 +76,6 @@ const CHEATING_OBJECT_PATTERN = new RegExp(
     TABLET_LIKE_PATTERN.source,
     BOOK_LIKE_PATTERN.source,
     SCREEN_LIKE_PATTERN.source,
-    GENERIC_DEVICE_PATTERN.source,
     HANDHELD_AID_PATTERN.source,
   ].join("|"),
 );
@@ -603,7 +600,6 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         let laptopScore = 0;
         let screenScore = 0;
         let handheldAidScore = 0;
-        let genericDeviceScore = 0;
 
         for (const category of categories) {
           if (PHONE_LIKE_PATTERN.test(category.label)) {
@@ -624,9 +620,6 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
           if (HANDHELD_AID_PATTERN.test(category.label)) {
             handheldAidScore = Math.max(handheldAidScore, category.score);
           }
-          if (GENERIC_DEVICE_PATTERN.test(category.label)) {
-            genericDeviceScore = Math.max(genericDeviceScore, category.score);
-          }
         }
 
         const isPhone = phoneScore > 0;
@@ -635,7 +628,6 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         const isLaptopLike = laptopScore > 0;
         const isScreenLike = screenScore > 0;
         const isHandheldAid = handheldAidScore > 0;
-        const isGenericDevice = genericDeviceScore > 0;
 
         if (isLaptopLike) {
           const videoHeight = Math.max(1, video.videoHeight || 1);
@@ -686,10 +678,6 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
             handheldAidScore >= OBJECT_HANDHELD_AID_MIN_SCORE &&
             areaRatio >= OBJECT_HANDHELD_AID_MIN_AREA_RATIO
           );
-        }
-
-        if (isGenericDevice) {
-          return genericDeviceScore >= 0.28 && areaRatio >= 0.01;
         }
 
         return false;
@@ -747,7 +735,6 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         findLabel(LAPTOP_LIKE_PATTERN) ||
         findLabel(SCREEN_LIKE_PATTERN) ||
         findLabel(BOOK_LIKE_PATTERN) ||
-        findLabel(GENERIC_DEVICE_PATTERN) ||
         findLabel(HANDHELD_AID_PATTERN) ||
         labels[0] ||
         "unknown"
