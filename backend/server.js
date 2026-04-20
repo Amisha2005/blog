@@ -45,7 +45,7 @@ const groq = new Groq({
 
 
 
-const conversationHistory = new Map(); 
+const conversationHistory = new Map();
 const recentFirstQuestionsByTopic = new Map();
 
 const START_VARIANTS = [
@@ -123,7 +123,7 @@ setInterval(() => {
 }, 30 * 60 * 1000);
 
 app.post("/api/chat", async (req, res) => {
-  const { chat: userMessageRaw, topic, difficulty, sessionId,resumeText="", } = req.body;
+  const { chat: userMessageRaw, topic, difficulty, sessionId, resumeText = "", } = req.body;
 
   if (!sessionId) return res.status(400).json({ reply: "Missing sessionId" });
   if (!topic?.trim()) return res.json({ reply: "Error: No interview topic selected." });
@@ -143,10 +143,10 @@ app.post("/api/chat", async (req, res) => {
   }
 
   history.push({
-  role: "user",
-  content: effectiveUserMessage,
-  timestamp: Date.now()
-});
+    role: "user",
+    content: effectiveUserMessage,
+    timestamp: Date.now()
+  });
 
   if (isNewSession && userMessage.toLowerCase() === "start") {
     const openingQuestion = pickUniqueOpeningQuestion(topic, difficulty, recentFirstQuestions);
@@ -216,7 +216,7 @@ Recently used first questions for this topic (avoid these exact or near-identica
 ${recentFirstQuestions.length ? recentFirstQuestions.map((q, i) => `${i + 1}. ${q}`).join("\n") : "None recorded yet"}
 `.trim(),
     },
-  ...history.map(({ role, content }) => ({ role, content })),
+    ...history.map(({ role, content }) => ({ role, content })),
   ];
 
   try {
@@ -284,10 +284,10 @@ ${avoidLines}`,
 
     // Add AI reply to history
     history.push({
-  role: "assistant",
-  content: botReply,
-  timestamp: Date.now()
-});
+      role: "assistant",
+      content: botReply,
+      timestamp: Date.now()
+    });
 
     // Save updated history
     conversationHistory.set(sessionId, history);

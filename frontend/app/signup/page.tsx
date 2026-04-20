@@ -16,8 +16,20 @@ import Link from "next/link";
 import { Github, Chrome, Mail, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "../Auth";
+import { signIn } from "next-auth/react";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "https://virtual-interview-32pw.onrender.com";
+
+const handleGithubLogin=async() => {
+  await signIn("github",{
+    callbackUrl:"/account"
+  })
+}
+const handleGoogleLogin=async() => {
+  await signIn("google",{
+    callbackUrl:"/account"
+  })
+}
 
 export default function SignUpPage() {
   const router = useRouter();
@@ -93,6 +105,7 @@ export default function SignUpPage() {
             {/* Social Login */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Button
+              onClick={handleGoogleLogin}
                 variant="outline"
                 className="w-full h-12 font-medium border-gray-300 dark:border-white/20 bg-gray-50/50 dark:bg-white/5 hover:bg-gray-100 dark:hover:bg-white/10 backdrop-blur-sm"
               >
@@ -100,6 +113,7 @@ export default function SignUpPage() {
                 Google
               </Button>
               <Button
+              onClick={handleGithubLogin}
                 variant="outline"
                 className="w-full h-12 font-medium border-gray-300 dark:border-white/20 bg-gray-50/50 dark:bg-white/5 hover:bg-gray-100 dark:hover:bg-white/10 backdrop-blur-sm"
               >

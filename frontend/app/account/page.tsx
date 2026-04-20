@@ -1,6 +1,5 @@
 // app/account/page.tsx
 "use client";
-import { useEffect } from "react";
 import { useAuth } from "@/app/Auth";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -12,28 +11,50 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { useState } from "react";
-import { LogOut, Mail, User, Calendar, Edit2, Save, X } from "lucide-react";
+import { LogOut, Mail, Calendar, Edit2, Save } from "lucide-react";
 
 export default function AccountPage() {
-  const { user, LogoutUser } = useAuth();
+  const { user, isLoading, LogoutUser } = useAuth();
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
-  const [name, setName] = useState(" ");
-  const [email,setEmail] = useState(" ");
-  const [bio, setBio] = useState("Full-stack developer | Next.js & Tailwind enthusiast");
+  const [draftName, setDraftName] = useState("");
+  const [draftBio, setDraftBio] = useState("Full-stack developer | Next.js & Tailwind enthusiast");
+  const displayName = user?.username || (user?.email ? user.email.split("@")[0] : "User");
 
   const handleLogout = () => {
     LogoutUser();
     router.push("/");
   };
 
-useEffect(() => {
-    if (user) {
-      setName(user.username || "");
-      setEmail(user.email || "");
-      setBio("");
-    }
-  }, [user]);
+  const handleToggleEdit = () => {
+    if (!user) return;
+    setIsEditing((prev) => {
+      const next = !prev;
+      if (!prev && next) {
+        setDraftName(user.username || "");
+        setDraftBio("");
+      }
+      return next;
+    });
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-slate-950 dark:to-slate-900">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <CardTitle>Loading…</CardTitle>
+            <CardDescription>Checking your session</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button className="w-full" disabled>
+              Please wait
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (!user) {
     return (
@@ -73,13 +94,13 @@ useEffect(() => {
               <Avatar className="h-32 w-32 ring-8 ring-background shadow-2xl">
                 <AvatarImage src="/avatar.jpg" />
                 <AvatarFallback className="text-3xl font-bold bg-gradient-to-br from-purple-500 to-pink-500 text-white">
-                 {user.username.charAt(0).toUpperCase()}
+                 {displayName.charAt(0).toUpperCase()}
                 </AvatarFallback>
               </Avatar>
 
               <div className="text-center sm:text-left flex-1">
                 <h2 className="text-3xl font-bold flex items-center gap-3 justify-center sm:justify-start">
-                  {user.username}
+                  {displayName}
                   <Badge variant="secondary" className="ml-2">Pro Member</Badge>
                 </h2>
                 <p className="text-muted-foreground flex items-center gap-2 justify-center sm:justify-start mt-1">
@@ -93,7 +114,7 @@ useEffect(() => {
               <Button
                 size="lg"
                 variant={isEditing ? "default" : "outline"}
-                onClick={() => setIsEditing(!isEditing)}
+                onClick={handleToggleEdit}
                 className="shadow-lg"
               >
                 {isEditing ? (
@@ -130,15 +151,15 @@ useEffect(() => {
                     <Label htmlFor="name">Full Name</Label>
                     <Input
                       id="name"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
+                      value={isEditing ? draftName : displayName}
+                      onChange={(e) => setDraftName(e.target.value)}
                       disabled={!isEditing}
                       className="h-12"
                     />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="email">Email Address</Label>
-                   <Input value={email} disabled className="h-12" ></Input>
+                   <Input value={user.email} disabled className="h-12" ></Input>
                   </div>
                 </div>
 
@@ -146,8 +167,8 @@ useEffect(() => {
                   <Label htmlFor="bio">Bio</Label>
                   <textarea
                     id="bio"
-                    value={bio}
-                    onChange={(e) => setBio(e.target.value)}
+                    value={draftBio}
+                    onChange={(e) => setDraftBio(e.target.value)}
                     disabled={!isEditing}
                     rows={4}
                     className="w-full rounded-lg border border-input bg-background px-4 py-3 text-sm ring-offset-background disabled:cursor-not-allowed disabled:opacity-50"
