@@ -805,7 +805,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         void detectObjects();
       }, OBJECT_DETECTION_INTERVAL_MS);
     }
-  }, [getSuspiciousDetections]);
+  }, [getSuspiciousDetections, isObjectDetectorReady]);
 
   useEffect(() => {
     stopObjectDetectionLoop();
@@ -2074,10 +2074,12 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       }
 
       {/* Exit button */}
-      <button className="fixed bottom-4 right-4 flex h-11 w-24 items-center justify-center rounded-lg bg-slate-500 pl-3 text-base font-medium text-black shadow-lg hover:bg-slate-600 sm:bottom-8 sm:right-8 sm:h-12 sm:w-28">
-        <Link href="/congratulations">Exit</Link>
-        <MoveRight className="ml-3 h-5 w-5" />
-      </button>
+      <Button asChild className="fixed bottom-4 right-4 h-11 w-24 rounded-lg bg-slate-500 pl-3 text-base font-medium text-black shadow-lg hover:bg-slate-600 sm:bottom-8 sm:right-8 sm:h-12 sm:w-28">
+        <Link href="/congratulations" aria-label="Exit interview">
+          Exit
+          <MoveRight className="ml-3 h-5 w-5" />
+        </Link>
+      </Button>
       {
         resumeText && (
           <Badge variant="outline" className="ml-2 bg-green-950 text-green-300">
