@@ -59,6 +59,10 @@ interface InterviewRoomProps {
 //objectDtector where object are store initially it will be null
 
 let objectDetector: ObjectDetector | null = null;
+const PHONE_LIKE_PATTERN =
+  /cell phone|mobile phone|smartphone|\bphone\b|iphone|android|telephone handset|cellular telephone|mobile device|handheld phone|wireless phone|portable phone|portable telephone|smart device|communication device/;
+const HANDHELD_AID_PATTERN =
+  /remote control|\bcalculator\b|electronic device|portable media player|digital device|handheld device|mobile device|smart device|communication device/;
 
 const normalizeInterviewTopic = (rawTopic: string) => {
   const decoded = decodeURIComponent(rawTopic || "").replace(/\s+/g, " ").trim();
@@ -191,6 +195,10 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const OBJECT_LAPTOP_MIN_AREA_RATIO = 0.1;
   const OBJECT_USER_LAPTOP_BOTTOM_ZONE = 0.7;
   const OBJECT_SUSPICIOUS_CONSECUTIVE_FRAMES = 3;
+  const PHONE_EVIDENCE_WINDOW_MS = 2600;
+  const PHONE_EVIDENCE_REQUIRED_HITS = 2;
+  const PHONE_EVIDENCE_MIN_SCORE = 0.08;
+  const PHONE_EVIDENCE_MIN_AREA_RATIO = 0.0018;
   const EMOTION_UI_UPDATE_INTERVAL_MS = 500;
   const DEBUG_OBJECT_UPDATE_INTERVAL_MS = 450;
   const emotionLoopTimeoutRef = useRef<any>(null);
@@ -217,6 +225,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const lastInterviewQuestionRef = useRef<string>("");
   const lastEmotionUiUpdateRef = useRef<number>(0);
   const lastFaceFallbackCheckRef = useRef<number>(0);
+  const phoneEvidenceHitsRef = useRef<number[]>([]);
 
   const currentTimeRef = useRef<number | null>(null);
 
@@ -492,6 +501,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
   const stopCamera = () => {
     stopDetectionLoops();
+    phoneEvidenceHitsRef.current = [];
 
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
@@ -537,8 +547,6 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         const height = detection.boundingBox?.height ?? 0;
         const areaRatio = (width * height) / frameArea;
 
-        const phoneLikePattern =
-          /cell phone|mobile phone|smartphone|\bphone\b|iphone|android|telephone handset|cellular telephone/;
         const tabletLikePattern =
           /\btablet\b|ipad|tablet computer|galaxy tab|tab device|e-reader|kindle/;
         const bookLikePattern =
@@ -546,9 +554,6 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         const laptopLikePattern = /\blaptop\b|notebook computer/;
         const screenLikePattern =
           /\bmonitor\b|computer monitor|\btv\b|television|display screen|desktop computer/;
-        const handheldAidPattern =
-          /remote control|\bcalculator\b|electronic device|portable media player|digital device/;
-
         let phoneScore = 0;
         let tabletScore = 0;
         let bookScore = 0;
@@ -557,7 +562,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         let handheldAidScore = 0;
 
         for (const category of categories) {
-          if (phoneLikePattern.test(category.label)) {
+          if (PHONE_LIKE_PATTERN.test(category.label)) {
             phoneScore = Math.max(phoneScore, category.score);
           }
           if (tabletLikePattern.test(category.label)) {
@@ -572,7 +577,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
           if (screenLikePattern.test(category.label)) {
             screenScore = Math.max(screenScore, category.score);
           }
-          if (handheldAidPattern.test(category.label)) {
+          if (HANDHELD_AID_PATTERN.test(category.label)) {
             handheldAidScore = Math.max(handheldAidScore, category.score);
           }
         }
@@ -641,6 +646,38 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     [],
   );
 
+  const getPhoneEvidenceDetections = useCallback(
+    (
+      detections: Array<{
+        categories?: Array<{ categoryName?: string; score?: number }>;
+        boundingBox?: {
+          width?: number;
+          height?: number;
+        };
+      }>,
+      video: HTMLVideoElement,
+    ) => {
+      const frameArea = Math.max(1, (video.videoWidth || 1) * (video.videoHeight || 1));
+      return detections.filter((detection) => {
+        const width = detection.boundingBox?.width ?? 0;
+        const height = detection.boundingBox?.height ?? 0;
+        const areaRatio = (width * height) / frameArea;
+
+        if (areaRatio < PHONE_EVIDENCE_MIN_AREA_RATIO) return false;
+
+        return (detection.categories || []).some((category) => {
+          const label = (category.categoryName || "").toLowerCase();
+          const score = category.score ?? 0;
+          const isPhoneLike =
+            PHONE_LIKE_PATTERN.test(label) || HANDHELD_AID_PATTERN.test(label);
+
+          return isPhoneLike && score >= PHONE_EVIDENCE_MIN_SCORE;
+        });
+      });
+    },
+    [],
+  );
+
   const getSuspiciousLabel = useCallback(
     (
       detection: {
@@ -654,12 +691,12 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       const findLabel = (matcher: RegExp) => labels.find((label) => matcher.test(label));
 
       return (
-        findLabel(/cell phone|mobile phone|smartphone|\bphone\b|iphone|android|telephone handset|cellular telephone/) ||
+        findLabel(PHONE_LIKE_PATTERN) ||
         findLabel(/\btablet\b|ipad|tablet computer|galaxy tab|tab device|e-reader|kindle/) ||
         findLabel(/\blaptop\b|notebook computer/) ||
         findLabel(/\bmonitor\b|computer monitor|\btv\b|television|display screen|desktop computer/) ||
         findLabel(/\bbook\b|\bnotebook\b|\bnotepad\b|\bdiary\b|\bjournal\b|document|paper/) ||
-        findLabel(/remote control|\bcalculator\b|electronic device|portable media player|digital device/) ||
+        findLabel(HANDHELD_AID_PATTERN) ||
         labels[0] ||
         "unknown"
       );
@@ -1104,11 +1141,16 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       }
 
       const suspicious = getSuspiciousDetections(results.detections, video);
+      const phoneEvidenceDetections = getPhoneEvidenceDetections(
+        results.detections,
+        video,
+      );
+      const now = Date.now();
 
       const hasPhoneLikeSuspicious = suspicious.some((detection) =>
         (detection.categories || []).some((category) => {
           const label = (category.categoryName || "").toLowerCase();
-          return /cell phone|mobile phone|smartphone|\bphone\b|iphone|android|telephone handset|cellular telephone/.test(label);
+          return PHONE_LIKE_PATTERN.test(label);
         }),
       );
 
@@ -1119,29 +1161,42 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         }),
       );
 
-      const requiredSuspiciousFrames = hasPhoneLikeSuspicious
+      phoneEvidenceHitsRef.current = phoneEvidenceHitsRef.current.filter(
+        (timestamp) => now - timestamp <= PHONE_EVIDENCE_WINDOW_MS,
+      );
+
+      if (phoneEvidenceDetections.length > 0) {
+        phoneEvidenceHitsRef.current.push(now);
+      }
+
+      const hasPhoneEvidenceAlert =
+        phoneEvidenceDetections.length > 0 &&
+        phoneEvidenceHitsRef.current.length >= PHONE_EVIDENCE_REQUIRED_HITS;
+      const detectionsForAlert =
+        suspicious.length > 0 ? suspicious : hasPhoneEvidenceAlert ? phoneEvidenceDetections : [];
+
+      const requiredSuspiciousFrames = hasPhoneLikeSuspicious || hasPhoneEvidenceAlert
         ? 1
         : hasBookLikeSuspicious
           ? 2
           : OBJECT_SUSPICIOUS_CONSECUTIVE_FRAMES;
 
-      if (suspicious.length > 0) {
+      if (detectionsForAlert.length > 0) {
         suspiciousFrameStreakRef.current += 1;
       } else {
         suspiciousFrameStreakRef.current = 0;
       }
 
       if (
-        suspicious.length > 0 &&
+        detectionsForAlert.length > 0 &&
         !isPausedRef.current &&
         suspiciousFrameStreakRef.current >= requiredSuspiciousFrames
       ) {
-        const now = Date.now();
         if (now - lastObjectAlertTimeRef.current > OBJECT_ALERT_COOLDOWN_MS) {
           proctoringIncidentRef.current.suspiciousObject += 1;
           const labels = [
             ...new Set(
-              suspicious.map((d) => getSuspiciousLabel(d)),
+              detectionsForAlert.map((d) => getSuspiciousLabel(d)),
             ),
           ];
           setSuspiciousObjectsList(labels);
@@ -1157,6 +1212,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
           ]);
           lastObjectAlertTimeRef.current = now;
           suspiciousFrameStreakRef.current = 0;
+          phoneEvidenceHitsRef.current = [];
         }
       }
     } catch (err) {
@@ -1186,7 +1242,14 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     ) {
       scheduleObjectDetection();
     }
-  }, [debugDetectionMode, getSuspiciousDetections, getSuspiciousLabel, isObjectDetectorReady, scheduleObjectDetection]);
+  }, [
+    debugDetectionMode,
+    getPhoneEvidenceDetections,
+    getSuspiciousDetections,
+    getSuspiciousLabel,
+    isObjectDetectorReady,
+    scheduleObjectDetection,
+  ]);
 
   useEffect(() => {
     stopObjectDetectionLoop();
