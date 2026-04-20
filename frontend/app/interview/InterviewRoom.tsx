@@ -166,8 +166,10 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const OBJECT_DETECTION_MAX_INTERVAL_MS = 1800;
   const OBJECT_SUSPICIOUS_MIN_SCORE = 0.5;
   const OBJECT_SUSPICIOUS_MIN_AREA_RATIO = 0.04;
-  const OBJECT_PHONE_MIN_SCORE = 0.35;
-  const OBJECT_PHONE_MIN_AREA_RATIO = 0.008;
+  const OBJECT_PHONE_MIN_SCORE = 0.22;
+  const OBJECT_PHONE_MIN_AREA_RATIO = 0.006;
+  const OBJECT_SCREEN_MIN_SCORE = 0.45;
+  const OBJECT_SCREEN_MIN_AREA_RATIO = 0.03;
   const OBJECT_LAPTOP_MIN_SCORE = 0.72;
   const OBJECT_LAPTOP_MIN_AREA_RATIO = 0.1;
   const OBJECT_USER_LAPTOP_BOTTOM_ZONE = 0.7;
@@ -440,17 +442,49 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     ) => {
       const frameArea = Math.max(1, (video.videoWidth || 1) * (video.videoHeight || 1));
 
+      const getTopScore = (
+        categories: Array<{ label: string; score: number }>,
+        matcher: RegExp,
+      ) => {
+        return categories
+          .filter((category) => matcher.test(category.label))
+          .reduce((max, category) => Math.max(max, category.score), 0);
+      };
+
       return detections.filter((detection) => {
-        const label = (detection.categories?.[0]?.categoryName || "").toLowerCase();
-        const score = detection.categories?.[0]?.score ?? 0;
+        const categories = (detection.categories || []).map((category) => ({
+          label: (category.categoryName || "").toLowerCase(),
+          score: category.score ?? 0,
+        }));
+
+        if (categories.length === 0) return false;
+
         const originY = detection.boundingBox?.originY ?? 0;
         const width = detection.boundingBox?.width ?? 0;
         const height = detection.boundingBox?.height ?? 0;
         const areaRatio = (width * height) / frameArea;
 
-        const isPhone = /cell phone|mobile phone|smartphone|\bphone\b/.test(label);
-        const isBookLike = /\bbook\b|\bnotebook\b|\bnotepad\b|\bdiary\b|\bjournal\b/.test(label);
-        const isLaptopLike = /\blaptop\b|notebook computer/.test(label);
+        const phoneScore = getTopScore(
+          categories,
+          /cell phone|mobile phone|smartphone|\bphone\b|iphone|android/,
+        );
+        const bookScore = getTopScore(
+          categories,
+          /\bbook\b|\bnotebook\b|\bnotepad\b|\bdiary\b|\bjournal\b/,
+        );
+        const laptopScore = getTopScore(
+          categories,
+          /\blaptop\b|notebook computer/,
+        );
+        const screenScore = getTopScore(
+          categories,
+          /\bmonitor\b|computer monitor|\btv\b|television|display screen/,
+        );
+
+        const isPhone = phoneScore > 0;
+        const isBookLike = bookScore > 0;
+        const isLaptopLike = laptopScore > 0;
+        const isScreenLike = screenScore > 0;
 
         if (isLaptopLike) {
           const videoHeight = Math.max(1, video.videoHeight || 1);
@@ -463,21 +497,55 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
           }
 
           return (
-            score >= OBJECT_LAPTOP_MIN_SCORE &&
+            laptopScore >= OBJECT_LAPTOP_MIN_SCORE &&
             areaRatio >= OBJECT_LAPTOP_MIN_AREA_RATIO
           );
         }
 
         if (isBookLike) {
-          return score >= 0.32 && areaRatio >= 0.012;
+          return bookScore >= 0.32 && areaRatio >= 0.012;
         }
 
         if (isPhone) {
-          return score >= OBJECT_PHONE_MIN_SCORE && areaRatio >= OBJECT_PHONE_MIN_AREA_RATIO;
+          return (
+            phoneScore >= OBJECT_PHONE_MIN_SCORE &&
+            areaRatio >= OBJECT_PHONE_MIN_AREA_RATIO
+          );
+        }
+
+        if (isScreenLike) {
+          return (
+            screenScore >= OBJECT_SCREEN_MIN_SCORE &&
+            areaRatio >= OBJECT_SCREEN_MIN_AREA_RATIO
+          );
         }
 
         return false;
       });
+    },
+    [],
+  );
+
+  const getSuspiciousLabel = useCallback(
+    (
+      detection: {
+        categories?: Array<{ categoryName?: string; score?: number }>;
+      },
+    ) => {
+      const labels = (detection.categories || [])
+        .map((category) => (category.categoryName || "").toLowerCase())
+        .filter(Boolean);
+
+      const findLabel = (matcher: RegExp) => labels.find((label) => matcher.test(label));
+
+      return (
+        findLabel(/cell phone|mobile phone|smartphone|\bphone\b|iphone|android/) ||
+        findLabel(/\blaptop\b|notebook computer/) ||
+        findLabel(/\bmonitor\b|computer monitor|\btv\b|television|display screen/) ||
+        findLabel(/\bbook\b|\bnotebook\b|\bnotepad\b|\bdiary\b|\bjournal\b/) ||
+        labels[0] ||
+        "unknown"
+      );
     },
     [],
   );
@@ -518,7 +586,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         const suspicious = getSuspiciousDetections(results.detections, video);
 
         if (suspicious.length > 0) {
-          const labels = [...new Set(suspicious.map((d) => d.categories?.[0]?.categoryName || "unknown"))];
+          const labels = [...new Set(suspicious.map((d) => getSuspiciousLabel(d)))];
           setSuspiciousObjectsList(labels);
           return {
             ok: false,
@@ -624,7 +692,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
           // A GPU is a processor designed to handle many calculations at the same time, especially for graphics and heavy computations like AI and machine learning.
           //modelAssetPath This loads the trained object detection model file.
-          scoreThreshold: 0.35,
+          scoreThreshold: 0.2,
           maxResults: 10,
           runningMode: "VIDEO",
         });
@@ -917,7 +985,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
           proctoringIncidentRef.current.suspiciousObject += 1;
           const labels = [
             ...new Set(
-              suspicious.map((d) => d.categories?.[0]?.categoryName || "unknown"),
+              suspicious.map((d) => getSuspiciousLabel(d)),
             ),
           ];
           setSuspiciousObjectsList(labels);
@@ -962,7 +1030,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     ) {
       scheduleObjectDetection();
     }
-  }, [debugDetectionMode, getSuspiciousDetections, isObjectDetectorReady, scheduleObjectDetection]);
+  }, [debugDetectionMode, getSuspiciousDetections, getSuspiciousLabel, isObjectDetectorReady, scheduleObjectDetection]);
 
   useEffect(() => {
     stopObjectDetectionLoop();
