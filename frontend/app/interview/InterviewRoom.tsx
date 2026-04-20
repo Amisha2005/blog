@@ -241,6 +241,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const interviewStartedRef = useRef(false);
   const interviewEndedRef = useRef(false);
   const isModelReadyRef = useRef(false);
+  const isObjectDetectorReadyRef = useRef(false);
   const isPausedRef = useRef(false);
   const proctoringIncidentRef = useRef({ multiFace: 0, suspiciousObject: 0 });
   const lastInterviewQuestionRef = useRef<string>("");
@@ -355,6 +356,10 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   useEffect(() => {
     isModelReadyRef.current = isModelReady;
   }, [isModelReady]);
+
+  useEffect(() => {
+    isObjectDetectorReadyRef.current = isObjectDetectorReady;
+  }, [isObjectDetectorReady]);
 
   useEffect(() => {
     isPausedRef.current = isPaused;
@@ -1145,7 +1150,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       return;
     }
 
-    if (!isObjectDetectorReady || !objectDetector) {
+    if (!isObjectDetectorReadyRef.current || !objectDetector) {
       scheduleObjectDetection(260);
       return;
     }
@@ -1309,7 +1314,6 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     getCheatingObjectEvidenceDetections,
     getSuspiciousDetections,
     getSuspiciousLabel,
-    isObjectDetectorReady,
     pauseInterviewForViolation,
     scheduleObjectDetection,
   ]);
