@@ -166,25 +166,25 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const multiFaceFrameStreakRef = useRef<number>(0);
   const lastDebugObjectUpdateRef = useRef<number>(0);
   const OBJECT_ALERT_COOLDOWN_MS = 7000;
-  const MULTI_FACE_ALERT_COOLDOWN_MS = 8000;
-  const MULTI_FACE_SUSPICIOUS_CONSECUTIVE_FRAMES = 2;
-  const FACE_DETECTION_INTERVAL_MS = 450;
-  const OBJECT_DETECTION_INTERVAL_MS = 700;
-  const FACE_DETECTION_MIN_INTERVAL_MS = 350;
-  const FACE_DETECTION_MAX_INTERVAL_MS = 1400;
-  const FACE_DETECTION_INPUT_SIZE = 256;
-  const FACE_DETECTION_SCORE_THRESHOLD = 0.35;
-  const FACE_VALIDATION_INPUT_SIZE = 320;
-  const FACE_VALIDATION_SCORE_THRESHOLD = 0.32;
-  const FACE_FALLBACK_INPUT_SIZE = 384;
-  const FACE_FALLBACK_SCORE_THRESHOLD = 0.28;
-  const FACE_FALLBACK_COOLDOWN_MS = 1600;
-  const OBJECT_DETECTION_MIN_INTERVAL_MS = 500;
-  const OBJECT_DETECTION_MAX_INTERVAL_MS = 1800;
+  const MULTI_FACE_ALERT_COOLDOWN_MS = 5000;
+  const MULTI_FACE_SUSPICIOUS_CONSECUTIVE_FRAMES = 1;
+  const FACE_DETECTION_INTERVAL_MS = 260;
+  const OBJECT_DETECTION_INTERVAL_MS = 480;
+  const FACE_DETECTION_MIN_INTERVAL_MS = 180;
+  const FACE_DETECTION_MAX_INTERVAL_MS = 650;
+  const FACE_DETECTION_INPUT_SIZE = 224;
+  const FACE_DETECTION_SCORE_THRESHOLD = 0.3;
+  const FACE_VALIDATION_INPUT_SIZE = 256;
+  const FACE_VALIDATION_SCORE_THRESHOLD = 0.28;
+  const FACE_FALLBACK_INPUT_SIZE = 320;
+  const FACE_FALLBACK_SCORE_THRESHOLD = 0.22;
+  const FACE_FALLBACK_COOLDOWN_MS = 700;
+  const OBJECT_DETECTION_MIN_INTERVAL_MS = 320;
+  const OBJECT_DETECTION_MAX_INTERVAL_MS = 950;
   const OBJECT_SUSPICIOUS_MIN_SCORE = 0.5;
   const OBJECT_SUSPICIOUS_MIN_AREA_RATIO = 0.04;
-  const OBJECT_PHONE_MIN_SCORE = 0.12;
-  const OBJECT_PHONE_MIN_AREA_RATIO = 0.003;
+  const OBJECT_PHONE_MIN_SCORE = 0.08;
+  const OBJECT_PHONE_MIN_AREA_RATIO = 0.002;
   const OBJECT_TABLET_MIN_SCORE = 0.18;
   const OBJECT_TABLET_MIN_AREA_RATIO = 0.009;
   const OBJECT_HANDHELD_AID_MIN_SCORE = 0.3;
@@ -195,10 +195,10 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const OBJECT_LAPTOP_MIN_AREA_RATIO = 0.1;
   const OBJECT_USER_LAPTOP_BOTTOM_ZONE = 0.7;
   const OBJECT_SUSPICIOUS_CONSECUTIVE_FRAMES = 3;
-  const PHONE_EVIDENCE_WINDOW_MS = 2600;
-  const PHONE_EVIDENCE_REQUIRED_HITS = 2;
-  const PHONE_EVIDENCE_MIN_SCORE = 0.08;
-  const PHONE_EVIDENCE_MIN_AREA_RATIO = 0.0018;
+  const PHONE_EVIDENCE_WINDOW_MS = 1800;
+  const PHONE_EVIDENCE_REQUIRED_HITS = 1;
+  const PHONE_EVIDENCE_MIN_SCORE = 0.06;
+  const PHONE_EVIDENCE_MIN_AREA_RATIO = 0.0012;
   const EMOTION_UI_UPDATE_INTERVAL_MS = 500;
   const DEBUG_OBJECT_UPDATE_INTERVAL_MS = 450;
   const emotionLoopTimeoutRef = useRef<any>(null);
@@ -275,7 +275,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       }, 0);
       const shouldRunFallback =
         detections.length === 0 ||
-        (detections.length === 1 && bestPrimaryScore < 0.75);
+        (detections.length === 1 && bestPrimaryScore < 0.82);
 
       if (!shouldRunFallback) return detections;
       if (now - lastFaceFallbackCheckRef.current < FACE_FALLBACK_COOLDOWN_MS) {
@@ -863,8 +863,8 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
           // A GPU is a processor designed to handle many calculations at the same time, especially for graphics and heavy computations like AI and machine learning.
           //modelAssetPath This loads the trained object detection model file.
-          scoreThreshold: 0.14,
-          maxResults: 12,
+          scoreThreshold: 0.1,
+          maxResults: 8,
           runningMode: "VIDEO",
         });
         setObjectDetectionUnavailable(false);
@@ -990,13 +990,13 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
       const detectionDurationMs = performance.now() - detectionStartedAt;
       const targetInterval = clampInterval(
-        Math.max(FACE_DETECTION_INTERVAL_MS, detectionDurationMs * 1.35),
+        Math.max(FACE_DETECTION_INTERVAL_MS, detectionDurationMs * 1.1),
         FACE_DETECTION_MIN_INTERVAL_MS,
         FACE_DETECTION_MAX_INTERVAL_MS,
       );
 
       dynamicEmotionIntervalRef.current = clampInterval(
-        dynamicEmotionIntervalRef.current * 0.7 + targetInterval * 0.3,
+        dynamicEmotionIntervalRef.current * 0.55 + targetInterval * 0.45,
         FACE_DETECTION_MIN_INTERVAL_MS,
         FACE_DETECTION_MAX_INTERVAL_MS,
       );
@@ -1226,13 +1226,13 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
       const detectionDurationMs = performance.now() - detectionStartedAt;
       const targetInterval = clampInterval(
-        Math.max(OBJECT_DETECTION_INTERVAL_MS, detectionDurationMs * 1.5),
+        Math.max(OBJECT_DETECTION_INTERVAL_MS, detectionDurationMs * 1.15),
         OBJECT_DETECTION_MIN_INTERVAL_MS,
         OBJECT_DETECTION_MAX_INTERVAL_MS,
       );
 
       dynamicObjectIntervalRef.current = clampInterval(
-        dynamicObjectIntervalRef.current * 0.7 + targetInterval * 0.3,
+        dynamicObjectIntervalRef.current * 0.55 + targetInterval * 0.45,
         OBJECT_DETECTION_MIN_INTERVAL_MS,
         OBJECT_DETECTION_MAX_INTERVAL_MS,
       );
@@ -2506,8 +2506,8 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       {/* Pause modal – same style */}
       {
         (showMultiFaceModal || showSuspiciousObjectModal || showTabSwitchModal) && (
-          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 backdrop-blur-sm">
-            <Card className="p-10 max-w-lg text-center bg-white/95 dark:bg-slate-900/95 border border-purple-500/30 rounded-3xl shadow-2xl">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/78">
+            <Card className="max-w-lg rounded-3xl border border-purple-500/30 bg-white p-10 text-center shadow-xl dark:bg-slate-900">
               <h2 className="text-3xl font-bold text-red-600 mb-6">
                 {showMultiFaceModal
                   ? "Multiple Faces Detected"
