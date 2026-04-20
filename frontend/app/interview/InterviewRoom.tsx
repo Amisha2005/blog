@@ -154,6 +154,11 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const [showSuspiciousObjectModal, setShowSuspiciousObjectModal] =
     useState<boolean>(false);
   const [showTabSwitchModal, setShowTabSwitchModal] = useState<boolean>(false);
+  const [activeViolation, setActiveViolation] = useState<
+    "multiFace" | "suspiciousObject" | "tabSwitch" | null
+  >(null);
+  const [resumeValidationMessage, setResumeValidationMessage] = useState("");
+  const [isResumeChecking, setIsResumeChecking] = useState(false);
   const [suspiciousObjectsList, setSuspiciousObjectsList] = useState<string[]>(
     [],
   );
@@ -375,6 +380,9 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       labels: string[] = [],
     ) => {
       stopDetectionLoops();
+      setActiveViolation(type);
+      setResumeValidationMessage("");
+      setIsResumeChecking(false);
       setShowMultiFaceModal(type === "multiFace");
       setShowSuspiciousObjectModal(type === "suspiciousObject");
       setShowTabSwitchModal(type === "tabSwitch");
@@ -722,7 +730,9 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     [],
   );
 
-  const validateInterviewConditions = useCallback(async () => {
+  const validateInterviewConditions = useCallback(async (
+    mode: "full" | "faceOnly" | "focusOnly" = "full",
+  ) => {
     if (
       !videoRef.current ||
       !cameraActiveRef.current ||
@@ -737,6 +747,17 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       return { ok: false, message: "Camera feed is not ready yet." };
     }
 
+    if (mode === "focusOnly") {
+      if (document.visibilityState === "hidden" || !document.hasFocus()) {
+        return {
+          ok: false,
+          message: "Return to the interview tab and keep the page visible before resuming.",
+        };
+      }
+
+      return { ok: true, message: "" };
+    }
+
     try {
       const primaryDetections = await detectFacesForMode(video, "validation");
       const detections = await maybeRunFaceFallback(video, primaryDetections);
@@ -746,6 +767,10 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
           ok: false,
           message: "Multiple faces are still visible. Please leave only one person in frame.",
         };
+      }
+
+      if (mode === "faceOnly") {
+        return { ok: true, message: "" };
       }
 
       if (objectDetector) {
@@ -778,14 +803,27 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   ]);
 
   const handleFixedIt = async () => {
-    const validation = await validateInterviewConditions();
+    setIsResumeChecking(true);
+    setResumeValidationMessage("");
+
+    const validationMode =
+      activeViolation === "multiFace"
+        ? "faceOnly"
+        : activeViolation === "tabSwitch"
+          ? "focusOnly"
+          : "full";
+    const validation = await validateInterviewConditions(validationMode);
+    setIsResumeChecking(false);
 
     if (!validation.ok) {
       setIsPaused(true);
       isPausedRef.current = true;
+      setResumeValidationMessage(validation.message);
       return;
     }
 
+    setActiveViolation(null);
+    setResumeValidationMessage("");
     setShowMultiFaceModal(false);
     setShowSuspiciousObjectModal(false);
     setShowTabSwitchModal(false);
@@ -2523,15 +2561,19 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                     : "Return to the interview tab and keep the page visible while you continue."}
               </p>
               <p className="text-lg text-muted-foreground mb-10">
-                Type <strong>"yes"</strong> or <strong>"ok"</strong> to resume
+                Click <strong>I've Fixed It</strong> to recheck and resume.
               </p>
+              {resumeValidationMessage && (
+                <p className="mb-6 text-sm text-red-500">{resumeValidationMessage}</p>
+              )}
               <Button
                 size="lg"
                 type="button"
                 onClick={handleFixedIt}
+                disabled={isResumeChecking}
                 className="px-12 py-7 text-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
               >
-                I've Fixed It
+                {isResumeChecking ? "Checking..." : "I've Fixed It"}
               </Button>
             </Card>
           </div>

@@ -371,27 +371,55 @@ app.post("/api/evaluate", async (req, res) => {
     .filter((m) => m.role === "user")
     .map((m) => String(m.content || "").trim())
     .filter(Boolean);
+  const interviewerMessages = history
+    .filter((m) => m.role === "assistant")
+    .map((m) => String(m.content || "").trim())
+    .filter(Boolean);
 
   const substantiveAnswers = userMessages.filter((content) => {
     if (controlInputPattern.test(content.toLowerCase())) return false;
     if (content.length < 4) return false;
     return true;
   });
+  const skippedOrControlCount = userMessages.filter((content) =>
+    controlInputPattern.test(content.toLowerCase()),
+  ).length;
 
   const substantiveWordCount = substantiveAnswers.reduce((sum, content) => {
     return sum + content.split(/\s+/).filter(Boolean).length;
   }, 0);
+  const interviewerQuestionCount = interviewerMessages.filter((content) =>
+    /\?/.test(content),
+  ).length;
+  const averageAnswerWords = substantiveAnswers.length
+    ? substantiveWordCount / substantiveAnswers.length
+    : 0;
+  const participationRatio = interviewerQuestionCount > 0
+    ? substantiveAnswers.length / interviewerQuestionCount
+    : substantiveAnswers.length > 0
+      ? 1
+      : 0;
 
-  if (substantiveAnswers.length === 0 || substantiveWordCount < 12) {
-    const persisted = await persistResult(0, Math.min(Number(presenceScore) || 65, 20));
+  const lowParticipation =
+    substantiveAnswers.length === 0 ||
+    substantiveWordCount < 12 ||
+    (interviewerQuestionCount >= 3 && substantiveAnswers.length <= 1) ||
+    participationRatio < 0.2 ||
+    averageAnswerWords < 3;
+
+  if (lowParticipation) {
+    const persisted = await persistResult(0, Math.min(Number(presenceScore) || 65, 15));
     return res.json({
       overall: 0,
       technical_accuracy: 0,
       communication: 0,
       problem_solving: 0,
       strengths: [],
-      weaknesses: ["No meaningful answers were provided by the candidate."],
-      feedback: "The interview could not be positively evaluated because meaningful technical answers were not provided.",
+      weaknesses: [
+        "The candidate provided little to no meaningful participation during the interview.",
+        "Most prompts were unanswered, skipped, or answered too briefly to evaluate technical ability.",
+      ],
+      feedback: "This was a negative interview outcome because the candidate did not provide enough substantive answers to demonstrate technical understanding, communication, or problem-solving.",
       finalScore: persisted.finalScoreValue,
     });
   }
@@ -409,6 +437,16 @@ Transcript:
 ${transcript}
 
 Evaluate **only** based on answers (ignore interviewer messages).
+Use the interaction signals below to calibrate the evaluation:
+- substantive_answer_count: ${substantiveAnswers.length}
+- substantive_word_count: ${substantiveWordCount}
+- average_answer_words: ${averageAnswerWords.toFixed(1)}
+- interviewer_question_count: ${interviewerQuestionCount}
+- participation_ratio: ${participationRatio.toFixed(2)}
+- skipped_or_control_count: ${skippedOrControlCount}
+
+If the candidate answered very little, skipped most prompts, or gave extremely short responses, the evaluation must be negative and scores must stay low.
+
 Score 0–100 in:
 - overall
 - technical_accuracy
@@ -460,6 +498,24 @@ Return **valid JSON only**, no markdown, no extra text:
     let safePresence = Number.isFinite(Number(presenceScore))
       ? Math.max(0, Math.min(100, Number(presenceScore)))
       : 65;
+
+    if (participationRatio < 0.35 || averageAnswerWords < 8) {
+      const participationPenalty = participationRatio < 0.2 || averageAnswerWords < 5 ? 30 : 18;
+      safeOverall = Math.max(0, safeOverall - participationPenalty);
+
+      const priorWeaknesses = Array.isArray(parsed?.weaknesses) ? parsed.weaknesses : [];
+      parsed.weaknesses = [
+        ...priorWeaknesses,
+        `Low interview participation detected (answers: ${substantiveAnswers.length}, avg words: ${averageAnswerWords.toFixed(1)}, participation ratio: ${participationRatio.toFixed(2)}).`,
+      ];
+
+      if (!parsed?.feedback || typeof parsed.feedback !== "string") {
+        parsed.feedback = "";
+      }
+      if (!/participation/i.test(parsed.feedback)) {
+        parsed.feedback = `${parsed.feedback ? `${parsed.feedback} ` : ""}The evaluation was reduced because the candidate did not engage consistently enough across the interview.`;
+      }
+    }
 
     const suspiciousObjectCount = Math.max(0, Number(proctoring?.suspiciousObject) || 0);
     const multiFaceCount = Math.max(0, Number(proctoring?.multiFace) || 0);
