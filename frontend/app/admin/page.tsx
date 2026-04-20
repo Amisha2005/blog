@@ -77,6 +77,7 @@ const DEMO_TOPIC_NAMES = new Set([
 
 export default function AdminDashboard() {
   const { isAdmin, authorizationToken } = useAuth();
+  const recommendedImageDimensions = "1200 x 675 px (16:9)";
 
   const [stats, setStats] = useState<Stats>({
     totalUsers: 0,
@@ -447,6 +448,48 @@ export default function AdminDashboard() {
                   placeholder="https://example.com/image.jpg"
                   className="rounded-xl"
                 />
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Recommended topic card image size: {recommendedImageDimensions}. Use a clear
+                  16:9 cover image so it fits the topic card without awkward cropping.
+                </p>
+              </div>
+
+              <div className="space-y-3 rounded-2xl border border-border/60 bg-muted/20 p-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium">Topic Card Image Preview</p>
+                    <p className="text-xs text-muted-foreground">
+                      This preview matches the interview topic card framing.
+                    </p>
+                  </div>
+                  <span className="rounded-full border border-border/60 px-3 py-1 text-xs text-muted-foreground">
+                    {recommendedImageDimensions}
+                  </span>
+                </div>
+                <div className="relative aspect-[16/9] overflow-hidden rounded-2xl bg-gradient-to-br from-sky-500/20 via-slate-900 to-emerald-500/20">
+                  {newTopic.image ? (
+                    <>
+                      <img
+                        src={newTopic.image}
+                        alt={newTopic.topicName || "Topic preview"}
+                        className="absolute inset-0 h-full w-full object-cover object-center"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent" />
+                    </>
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-sky-500 to-emerald-500">
+                      <span className="text-4xl text-white">🎯</span>
+                    </div>
+                  )}
+                  <div className="absolute inset-x-0 bottom-0 p-4 text-white">
+                    <p className="line-clamp-1 text-lg font-semibold">
+                      {newTopic.topicName || "Your topic title"}
+                    </p>
+                    <p className="mt-1 line-clamp-2 text-sm text-white/80">
+                      {newTopic.description || "Your topic description preview will appear here."}
+                    </p>
+                  </div>
+                </div>
               </div>
 
               <div>
