@@ -77,6 +77,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const difficultyParam = searchParams.get("difficulty");
   const durationParam = searchParams.get("duration");
   const autoStartParam = searchParams.get("autostart");
+  const debugDetectionMode = searchParams.get("debugDetection") === "1";
   const cleanTopic = selectedTopic ? normalizeInterviewTopic(selectedTopic) : null;
   const [autoStartRequested, setAutoStartRequested] = useState(false);
   const [skipSetupScreen, setSkipSetupScreen] = useState(false);
@@ -152,8 +153,10 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const [suspiciousObjectsList, setSuspiciousObjectsList] = useState<string[]>(
     [],
   );
+  const [debugObjectRows, setDebugObjectRows] = useState<string[]>([]);
   const lastObjectAlertTimeRef = useRef<number>(0);
   const suspiciousFrameStreakRef = useRef<number>(0);
+  const lastDebugObjectUpdateRef = useRef<number>(0);
   const OBJECT_ALERT_COOLDOWN_MS = 10000;
   const FACE_DETECTION_INTERVAL_MS = 450;
   const OBJECT_DETECTION_INTERVAL_MS = 700;
@@ -170,6 +173,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const OBJECT_USER_LAPTOP_BOTTOM_ZONE = 0.7;
   const OBJECT_SUSPICIOUS_CONSECUTIVE_FRAMES = 3;
   const EMOTION_UI_UPDATE_INTERVAL_MS = 500;
+  const DEBUG_OBJECT_UPDATE_INTERVAL_MS = 450;
   const emotionLoopTimeoutRef = useRef<any>(null);
   const objectLoopTimeoutRef = useRef<any>(null);
   const dynamicEmotionIntervalRef = useRef<number>(FACE_DETECTION_INTERVAL_MS);
@@ -241,6 +245,13 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   useEffect(() => {
     isPausedRef.current = isPaused;
   }, [isPaused]);
+
+  useEffect(() => {
+    if (!debugDetectionMode) {
+      setDebugObjectRows([]);
+      lastDebugObjectUpdateRef.current = 0;
+    }
+  }, [debugDetectionMode]);
 
   const stopEmotionDetectionLoop = useCallback(() => {
     if (emotionLoopTimeoutRef.current) {
@@ -859,6 +870,27 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         video,
         performance.now(),
       );
+
+      if (debugDetectionMode) {
+        const debugNow = performance.now();
+        if (debugNow - lastDebugObjectUpdateRef.current >= DEBUG_OBJECT_UPDATE_INTERVAL_MS) {
+          const frameArea = Math.max(1, (video.videoWidth || 1) * (video.videoHeight || 1));
+          const rows = results.detections
+            .slice(0, 8)
+            .map((detection) => {
+              const label = detection.categories?.[0]?.categoryName || "unknown";
+              const score = ((detection.categories?.[0]?.score ?? 0) * 100).toFixed(1);
+              const boxW = detection.boundingBox?.width ?? 0;
+              const boxH = detection.boundingBox?.height ?? 0;
+              const areaRatio = (((boxW * boxH) / frameArea) * 100).toFixed(2);
+              return `${label} | conf ${score}% | area ${areaRatio}%`;
+            });
+
+          setDebugObjectRows(rows.length > 0 ? rows : ["No objects detected in frame"]);
+          lastDebugObjectUpdateRef.current = debugNow;
+        }
+      }
+
       const suspicious = getSuspiciousDetections(results.detections, video);
 
       const hasBookLikeSuspicious = suspicious.some((d) => {
@@ -930,7 +962,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     ) {
       scheduleObjectDetection();
     }
-  }, [getSuspiciousDetections, isObjectDetectorReady, scheduleObjectDetection]);
+  }, [debugDetectionMode, getSuspiciousDetections, isObjectDetectorReady, scheduleObjectDetection]);
 
   useEffect(() => {
     stopObjectDetectionLoop();
@@ -2123,6 +2155,25 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
           </div>
         </div>
+        {debugDetectionMode && (
+          <Card className="mt-4 rounded-2xl border border-amber-500/40 bg-black/80 p-4 text-sm text-amber-100 backdrop-blur-xl">
+            <p className="mb-2 font-semibold text-amber-300">
+              Debug Detection Mode (temporary)
+            </p>
+            <p className="mb-3 text-xs text-amber-200/80">
+              Raw object labels and confidences from the live detector.
+            </p>
+            <div className="max-h-44 space-y-1 overflow-y-auto font-mono text-xs leading-5">
+              {debugObjectRows.length > 0 ? (
+                debugObjectRows.map((row, index) => (
+                  <p key={`${row}-${index}`}>{row}</p>
+                ))
+              ) : (
+                <p>No debug frames yet...</p>
+              )}
+            </div>
+          </Card>
+        )}
         <div className="mt-4">
           <Card className="rounded-2xl border border-cyan-500/30 bg-white/5 p-5 backdrop-blur-xl">
             <div className="mb-3 flex items-center gap-2">
