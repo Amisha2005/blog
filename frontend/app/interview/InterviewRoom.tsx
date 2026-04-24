@@ -236,6 +236,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const [showNewMessagesButton, setShowNewMessagesButton] = useState(false);
   const recognitionRef = useRef<any>(null);
   const isListeningRef = useRef(false);
+  const isRecognitionStartingRef = useRef(false);
   const shouldKeepListeningRef = useRef(false);
   const recognitionRestartTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pendingTranscriptRef = useRef("");
@@ -273,10 +274,14 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const startVoiceRecognition = useCallback(() => {
     if (!recognitionRef.current) return;
     if (!interviewStarted || isPaused || interviewEnded) return;
+    if (isRecognitionStartingRef.current || isListeningRef.current) return;
 
     try {
+      isRecognitionStartingRef.current = true;
+      setIsListening(true);
       recognitionRef.current.start();
     } catch (error) {
+      isRecognitionStartingRef.current = false;
       const message =
         error instanceof Error
           ? error.message
@@ -1723,17 +1728,26 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     };
 
     rec.onstart = () => {
+      isRecognitionStartingRef.current = false;
       isListeningRef.current = true;
       setIsListening(true);
     };
 
     rec.onerror = (event: any) => {
-      isListeningRef.current = false;
-      setIsListening(false);
+      isRecognitionStartingRef.current = false;
 
       const errorType = String(event?.error || "");
       const permissionError =
         errorType === "not-allowed" || errorType === "service-not-allowed";
+      const fatalStopError =
+        permissionError || errorType === "audio-capture" || errorType === "aborted";
+
+      if (!fatalStopError && shouldKeepListeningRef.current) {
+        setIsListening(true);
+      } else {
+        isListeningRef.current = false;
+        setIsListening(false);
+      }
 
       if (permissionError) {
         shouldKeepListeningRef.current = false;
@@ -1748,8 +1762,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     };
 
     rec.onend = () => {
-      isListeningRef.current = false;
-      setIsListening(false);
+      isRecognitionStartingRef.current = false;
 
       if (
         shouldKeepListeningRef.current &&
@@ -1757,6 +1770,8 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         !isPausedRef.current &&
         !interviewEndedRef.current
       ) {
+        setIsListening(true);
+
         if (recognitionRestartTimeoutRef.current) {
           clearTimeout(recognitionRestartTimeoutRef.current);
         }
@@ -1765,6 +1780,9 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
           recognitionRestartTimeoutRef.current = null;
           startVoiceRecognition();
         }, 180);
+      } else {
+        isListeningRef.current = false;
+        setIsListening(false);
       }
     };
 
@@ -1776,6 +1794,9 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       rec.onerror = null;
       rec.onend = null;
       rec.stop();
+      isRecognitionStartingRef.current = false;
+      isListeningRef.current = false;
+      shouldKeepListeningRef.current = false;
 
       if (recognitionRestartTimeoutRef.current) {
         clearTimeout(recognitionRestartTimeoutRef.current);
@@ -1792,6 +1813,8 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   useEffect(() => {
     if (!interviewStarted || isPaused || interviewEnded) {
       shouldKeepListeningRef.current = false;
+      isRecognitionStartingRef.current = false;
+      setIsListening(false);
 
       if (recognitionRestartTimeoutRef.current) {
         clearTimeout(recognitionRestartTimeoutRef.current);
@@ -1818,6 +1841,8 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
     if (isListeningRef.current) {
       shouldKeepListeningRef.current = false;
+      isRecognitionStartingRef.current = false;
+      setIsListening(false);
 
       if (recognitionRestartTimeoutRef.current) {
         clearTimeout(recognitionRestartTimeoutRef.current);
