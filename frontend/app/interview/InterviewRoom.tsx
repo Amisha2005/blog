@@ -2729,7 +2729,10 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                         : "Complete setup and start interview"
                   }
                   disabled={!interviewStarted || interviewEnded}
-                  className="min-h-11 w-full flex-1 resize-none bg-transparent px-2 text-white outline-none"
+                  // className="min-h-11 w-full flex-1 resize-none bg-transparent px-2 
+                  // text-white outline-none justify-center text-left"
+                  className="min-h-12 w-full flex-1 resize-none bg-transparent px-4 py-3
+                  text-white outline-none "
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
