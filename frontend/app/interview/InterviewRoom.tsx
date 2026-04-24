@@ -236,6 +236,8 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const [showNewMessagesButton, setShowNewMessagesButton] = useState(false);
   const recognitionRef = useRef<any>(null);
   const isListeningRef = useRef(false);
+  const shouldKeepListeningRef = useRef(false);
+  const recognitionRestartTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pendingTranscriptRef = useRef("");
   const transcriptRafRef = useRef<number | null>(null);
   const hasEndedRef = useRef(false);
@@ -267,6 +269,28 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       );
     });
   }, []);
+
+  const startVoiceRecognition = useCallback(() => {
+    if (!recognitionRef.current) return;
+    if (!interviewStarted || isPaused || interviewEnded) return;
+
+    try {
+      recognitionRef.current.start();
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to start speech recognition.";
+      setMessages((prev) => [
+        ...prev,
+        {
+          text: `Speech-to-text error: ${message}`,
+          isBot: true,
+        },
+      ]);
+      shouldKeepListeningRef.current = false;
+    }
+  }, [interviewStarted, isPaused, interviewEnded]);
 
   const clampPercent = (value: number) => Math.max(0, Math.min(100, value));
   const clampInterval = (value: number, min: number, max: number) =>
@@ -1703,14 +1727,45 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       setIsListening(true);
     };
 
-    rec.onerror = () => {
+    rec.onerror = (event: any) => {
       isListeningRef.current = false;
       setIsListening(false);
+
+      const errorType = String(event?.error || "");
+      const permissionError =
+        errorType === "not-allowed" || errorType === "service-not-allowed";
+
+      if (permissionError) {
+        shouldKeepListeningRef.current = false;
+        setMessages((prev) => [
+          ...prev,
+          {
+            text: "Microphone permission is blocked for speech-to-text. Allow mic access and try again.",
+            isBot: true,
+          },
+        ]);
+      }
     };
 
     rec.onend = () => {
       isListeningRef.current = false;
       setIsListening(false);
+
+      if (
+        shouldKeepListeningRef.current &&
+        interviewStartedRef.current &&
+        !isPausedRef.current &&
+        !interviewEndedRef.current
+      ) {
+        if (recognitionRestartTimeoutRef.current) {
+          clearTimeout(recognitionRestartTimeoutRef.current);
+        }
+
+        recognitionRestartTimeoutRef.current = setTimeout(() => {
+          recognitionRestartTimeoutRef.current = null;
+          startVoiceRecognition();
+        }, 180);
+      }
     };
 
     recognitionRef.current = rec;
@@ -1722,15 +1777,27 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       rec.onend = null;
       rec.stop();
 
+      if (recognitionRestartTimeoutRef.current) {
+        clearTimeout(recognitionRestartTimeoutRef.current);
+        recognitionRestartTimeoutRef.current = null;
+      }
+
       if (transcriptRafRef.current !== null) {
         cancelAnimationFrame(transcriptRafRef.current);
         transcriptRafRef.current = null;
       }
     };
-  }, [flushTranscriptUpdate]);
+  }, [flushTranscriptUpdate, startVoiceRecognition]);
 
   useEffect(() => {
     if (!interviewStarted || isPaused || interviewEnded) {
+      shouldKeepListeningRef.current = false;
+
+      if (recognitionRestartTimeoutRef.current) {
+        clearTimeout(recognitionRestartTimeoutRef.current);
+        recognitionRestartTimeoutRef.current = null;
+      }
+
       if (recognitionRef.current && isListeningRef.current) {
         recognitionRef.current.stop();
       }
@@ -1750,25 +1817,19 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     }
 
     if (isListeningRef.current) {
+      shouldKeepListeningRef.current = false;
+
+      if (recognitionRestartTimeoutRef.current) {
+        clearTimeout(recognitionRestartTimeoutRef.current);
+        recognitionRestartTimeoutRef.current = null;
+      }
+
       recognitionRef.current.stop();
       return;
     }
 
-    try {
-      recognitionRef.current.start();
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Unable to start speech recognition.";
-      setMessages((prev) => [
-        ...prev,
-        {
-          text: `Speech-to-text error: ${message}`,
-          isBot: true,
-        },
-      ]);
-    }
+    shouldKeepListeningRef.current = true;
+    startVoiceRecognition();
   };
 
   // ────────────────────────────────────────────────
