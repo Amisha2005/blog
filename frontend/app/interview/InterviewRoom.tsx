@@ -14,11 +14,9 @@ import {
   Mic,
   MicOff,
   Send,
-  Bot,
   Video,
   VideoOff,
   MoveRight,
-  Sparkles,
   TerminalSquare,
 } from "lucide-react";
 
@@ -137,7 +135,6 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const [isCameraOn, setIsCameraOn] = useState(true);
   const [isMicOn, setIsMicOn] = useState(true);
   const [isListening, setIsListening] = useState(false);
-  const [showCodeEditor, setShowCodeEditor] = useState(false);
   const [codeInput, setCodeInput] = useState("");
   const [codeCheckResult, setCodeCheckResult] = useState<{
     status: "idle" | "ok" | "warn" | "error";
@@ -186,13 +183,13 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const suspiciousFrameStreakRef = useRef<number>(0);
   const multiFaceFrameStreakRef = useRef<number>(0);
   const lastDebugObjectUpdateRef = useRef<number>(0);
-  const OBJECT_ALERT_COOLDOWN_MS = 7000;
+  const OBJECT_ALERT_COOLDOWN_MS = 8000;
   const MULTI_FACE_ALERT_COOLDOWN_MS = 5000;
   const MULTI_FACE_SUSPICIOUS_CONSECUTIVE_FRAMES = 1;
-  const FACE_DETECTION_INTERVAL_MS = 260;
-  const OBJECT_DETECTION_INTERVAL_MS = 480;
-  const FACE_DETECTION_MIN_INTERVAL_MS = 180;
-  const FACE_DETECTION_MAX_INTERVAL_MS = 650;
+  const FACE_DETECTION_INTERVAL_MS = 340;
+  const OBJECT_DETECTION_INTERVAL_MS = 700;
+  const FACE_DETECTION_MIN_INTERVAL_MS = 240;
+  const FACE_DETECTION_MAX_INTERVAL_MS = 820;
   const FACE_DETECTION_INPUT_SIZE = 224;
   const FACE_DETECTION_SCORE_THRESHOLD = 0.3;
   const FACE_VALIDATION_INPUT_SIZE = 256;
@@ -200,8 +197,8 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const FACE_FALLBACK_INPUT_SIZE = 320;
   const FACE_FALLBACK_SCORE_THRESHOLD = 0.22;
   const FACE_FALLBACK_COOLDOWN_MS = 700;
-  const OBJECT_DETECTION_MIN_INTERVAL_MS = 320;
-  const OBJECT_DETECTION_MAX_INTERVAL_MS = 950;
+  const OBJECT_DETECTION_MIN_INTERVAL_MS = 420;
+  const OBJECT_DETECTION_MAX_INTERVAL_MS = 1250;
   const OBJECT_SUSPICIOUS_MIN_SCORE = 0.5;
   const OBJECT_SUSPICIOUS_MIN_AREA_RATIO = 0.04;
   const OBJECT_PHONE_MIN_SCORE = 0.22;
@@ -238,12 +235,11 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const isListeningRef = useRef(false);
   const isRecognitionStartingRef = useRef(false);
   const shouldKeepListeningRef = useRef(false);
-  const wasListeningBeforePauseRef = useRef(false);
   const recognitionRestartTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const inputRef = useRef("");
   const dictationBaseInputRef = useRef("");
   const pendingTranscriptRef = useRef("");
-  const transcriptRafRef = useRef<number | null>(null);
+  const transcriptFlushTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const hasEndedRef = useRef(false);
   const timerActiveRef = useRef(false);
   const cameraActiveRef = useRef(false);
@@ -259,19 +255,20 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const cheatingObjectEvidenceHitsRef = useRef<number[]>([]);
 
   const currentTimeRef = useRef<number | null>(null);
+  const isVoicePressActiveRef = useRef(false);
 
   const flushTranscriptUpdate = useCallback((nextValue: string) => {
     pendingTranscriptRef.current = nextValue;
 
-    if (transcriptRafRef.current !== null) return;
+    if (transcriptFlushTimeoutRef.current) return;
 
-    transcriptRafRef.current = requestAnimationFrame(() => {
-      transcriptRafRef.current = null;
+    transcriptFlushTimeoutRef.current = setTimeout(() => {
+      transcriptFlushTimeoutRef.current = null;
       const latestValue = pendingTranscriptRef.current;
       setInput((previous) =>
         previous === latestValue ? previous : latestValue,
       );
-    });
+    }, 90);
   }, []);
 
   useEffect(() => {
@@ -469,9 +466,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     ) => {
       stopDetectionLoops();
 
-      // Stop speech recognition and remember if it was active
-      wasListeningBeforePauseRef.current =
-        isListeningRef.current || shouldKeepListeningRef.current;
+      isVoicePressActiveRef.current = false;
       shouldKeepListeningRef.current = false;
 
       if (recognitionRestartTimeoutRef.current) {
@@ -941,13 +936,6 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     multiFaceFrameStreakRef.current = 0;
     cheatingObjectEvidenceHitsRef.current = [];
     lastObjectAlertTimeRef.current = Date.now();
-
-    // Restart speech recognition if it was active before the pause
-    if (wasListeningBeforePauseRef.current) {
-      wasListeningBeforePauseRef.current = false;
-      shouldKeepListeningRef.current = true;
-      startVoiceRecognition();
-    }
 
     setMessages((prev) => {
       const resumedMessages = [...prev, { text: "Checks passed. Resuming interview.", isBot: true }];
@@ -1597,21 +1585,6 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     setShowNewMessagesButton(false);
   }, [messages]);
 
-  useEffect(() => {
-    const lastBotMessage = [...messages].reverse().find((msg) => msg.isBot);
-    if (!lastBotMessage) return;
-
-    const asksForCode =
-      /(write|implement|create|build).*(code|script|function|command|bash|shell)/i.test(
-        lastBotMessage.text,
-      ) ||
-      /(code|script|bash|shell|terminal|command\s*line|algorithm|pseudo\s*code)/i.test(
-        lastBotMessage.text,
-      );
-
-    setShowCodeEditor(asksForCode);
-  }, [messages]);
-
   const hasBalancedQuotes = (text: string) => {
     const singleQuotes = (text.match(/(?<!\\)'/g) || []).length;
     const doubleQuotes = (text.match(/(?<!\\)"/g) || []).length;
@@ -1777,7 +1750,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       (window as any).SpeechRecognition ||
       (window as any).webkitSpeechRecognition;
     const rec = new SpeechRecognition();
-    rec.continuous = true;
+    rec.continuous = false;
     rec.interimResults = true;
     rec.maxAlternatives = 1;
     rec.lang = "en-US";
@@ -1797,6 +1770,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     };
 
     rec.onstart = () => {
+      final = "";
       isRecognitionStartingRef.current = false;
       isListeningRef.current = true;
       setIsListening(true);
@@ -1811,7 +1785,11 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       const fatalStopError =
         permissionError || errorType === "audio-capture" || errorType === "aborted";
 
-      if (!fatalStopError && shouldKeepListeningRef.current) {
+      if (
+        !fatalStopError &&
+        shouldKeepListeningRef.current &&
+        isVoicePressActiveRef.current
+      ) {
         isListeningRef.current = true;
         setIsListening(true);
       } else {
@@ -1820,6 +1798,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       }
 
       if (permissionError) {
+        isVoicePressActiveRef.current = false;
         shouldKeepListeningRef.current = false;
         setMessages((prev) => [
           ...prev,
@@ -1836,7 +1815,9 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
       if (
         shouldKeepListeningRef.current &&
+        isVoicePressActiveRef.current &&
         interviewStartedRef.current &&
+        !isPausedRef.current &&
         !interviewEndedRef.current
       ) {
         isListeningRef.current = true;
@@ -1866,6 +1847,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       rec.stop();
       isRecognitionStartingRef.current = false;
       isListeningRef.current = false;
+      isVoicePressActiveRef.current = false;
       shouldKeepListeningRef.current = false;
 
       if (recognitionRestartTimeoutRef.current) {
@@ -1873,15 +1855,16 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         recognitionRestartTimeoutRef.current = null;
       }
 
-      if (transcriptRafRef.current !== null) {
-        cancelAnimationFrame(transcriptRafRef.current);
-        transcriptRafRef.current = null;
+      if (transcriptFlushTimeoutRef.current) {
+        clearTimeout(transcriptFlushTimeoutRef.current);
+        transcriptFlushTimeoutRef.current = null;
       }
     };
   }, [flushTranscriptUpdate, startVoiceRecognition]);
 
   useEffect(() => {
     if (!interviewStarted || interviewEnded) {
+      isVoicePressActiveRef.current = false;
       shouldKeepListeningRef.current = false;
       isRecognitionStartingRef.current = false;
       setIsListening(false);
@@ -1897,7 +1880,23 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     }
   }, [interviewStarted, interviewEnded]);
 
-  const toggleVoiceInput = () => {
+  const stopVoiceInput = useCallback(() => {
+    isVoicePressActiveRef.current = false;
+    shouldKeepListeningRef.current = false;
+    isRecognitionStartingRef.current = false;
+    setIsListening(false);
+
+    if (recognitionRestartTimeoutRef.current) {
+      clearTimeout(recognitionRestartTimeoutRef.current);
+      recognitionRestartTimeoutRef.current = null;
+    }
+
+    if (recognitionRef.current && isListeningRef.current) {
+      recognitionRef.current.stop();
+    }
+  }, []);
+
+  const startVoiceInput = useCallback(() => {
     if (!recognitionRef.current) {
       setMessages((prev) => [
         ...prev,
@@ -1909,23 +1908,27 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       return;
     }
 
-    if (isListeningRef.current) {
-      shouldKeepListeningRef.current = false;
-      isRecognitionStartingRef.current = false;
-      setIsListening(false);
-
-      if (recognitionRestartTimeoutRef.current) {
-        clearTimeout(recognitionRestartTimeoutRef.current);
-        recognitionRestartTimeoutRef.current = null;
-      }
-
-      recognitionRef.current.stop();
+    if (
+      isVoicePressActiveRef.current ||
+      !interviewStartedRef.current ||
+      interviewEndedRef.current ||
+      isPausedRef.current
+    ) {
       return;
     }
 
+    isVoicePressActiveRef.current = true;
     shouldKeepListeningRef.current = true;
     dictationBaseInputRef.current = inputRef.current;
     startVoiceRecognition();
+  }, [startVoiceRecognition]);
+
+  const handleVoicePressStart = () => {
+    void startVoiceInput();
+  };
+
+  const handleVoicePressEnd = () => {
+    stopVoiceInput();
   };
 
   // ────────────────────────────────────────────────
@@ -2149,7 +2152,6 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       setIsParsing(false);
     }
   };
-  const [showCode, setShowCode] = useState(false)
   const activeTopicHeading = cleanTopic || customTopic || manualTopic.trim() || "Interview";
   const activeDifficultyHeading = selectedDifficulty || "Medium";
 
@@ -2171,7 +2173,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                 variant="outline"
                 size="lg"
                 onClick={toggleCamera}
-                className="gap-2"
+                className="w-full gap-2 sm:w-auto"
                 disabled={!interviewStarted}
               >
                 {isCameraOn ? (
@@ -2186,6 +2188,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                 variant={isMicOn ? "outline" : "destructive"}
                 size="lg"
                 onClick={toggleMic}
+                className="w-full sm:w-auto"
                 disabled={!interviewStarted}
               >
                 {isMicOn ? (
@@ -2491,10 +2494,10 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                     </Avatar>
                   )}
                   <div
-                    className={`max-w-[70%] ${msg.isBot
+                    className={`max-w-[85%] break-words ${msg.isBot
                       ? "bg-gray-100 dark:bg-white/10"
                       : "bg-gradient-to-r from-purple-600 to-pink-600 text-white"
-                      } px-4 py-2 rounded-2xl shadow-lg text-base whitespace-pre-line sm:max-w-[72%]`}
+                      } px-4 py-2 rounded-2xl shadow-lg text-sm whitespace-pre-line sm:max-w-[72%] sm:text-base`}
                   >
                     {msg.text}
                   </div>
@@ -2584,20 +2587,41 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
             <div className="border-t p-4">
               <form
                 onSubmit={handleSubmit}
-                className="flex flex-col gap-2 rounded-2xl border border-gray-700 bg-[#111827] px-3 py-2 shadow-lg sm:flex-row sm:items-center"
+                className="flex flex-col items-stretch gap-2 rounded-2xl border border-gray-700 bg-[#111827] px-3 py-2 shadow-lg sm:flex-row sm:items-center"
               >
 
                 {/* Voice Input */}
                 <button
                   type="button"
-                  onClick={toggleVoiceInput}
-                  disabled={!interviewStarted || interviewEnded}
-                  className={`self-start rounded-lg p-2 ${isListening
-                    ? "bg-red-600 animate-pulse"
-                    : "hover:bg-white/10"
-                    }`}
+                  onPointerDown={handleVoicePressStart}
+                  onPointerUp={handleVoicePressEnd}
+                  onPointerLeave={handleVoicePressEnd}
+                  onPointerCancel={handleVoicePressEnd}
+                  onKeyDown={(e) => {
+                    if ((e.key === " " || e.key === "Enter") && !e.repeat) {
+                      e.preventDefault();
+                      handleVoicePressStart();
+                    }
+                  }}
+                  onKeyUp={(e) => {
+                    if (e.key === " " || e.key === "Enter") {
+                      e.preventDefault();
+                      handleVoicePressEnd();
+                    }
+                  }}
+                  aria-label="Hold microphone button to dictate"
+                  disabled={!interviewStarted || interviewEnded || isPaused}
+                  className={`flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold text-white transition sm:self-auto ${
+                    isListening
+                      ? "bg-red-600 shadow-lg shadow-red-900/40 animate-pulse"
+                      : "bg-white/10 hover:bg-white/20"
+                  }`}
                 >
                   <Mic className="h-5 w-5 text-white" />
+                  <span className="sm:hidden">{isListening ? "Release" : "Hold"}</span>
+                  <span className="hidden sm:inline">
+                    {isListening ? "Release to stop" : "Hold to talk"}
+                  </span>
                 </button>
 
                 {/* Mic Toggle */}
@@ -2642,11 +2666,11 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                     isPaused
                       ? 'Type "yes" or "ok" to continue...'
                       : interviewStarted
-                        ? "Type your answer..."
+                        ? "Hold mic to dictate or type your answer..."
                         : "Complete setup and start interview"
                   }
                   disabled={!interviewStarted || interviewEnded}
-                  className="min-h-11 flex-1 resize-none bg-transparent px-2 text-white outline-none"
+                  className="min-h-11 w-full flex-1 resize-none bg-transparent px-2 text-white outline-none"
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
@@ -2659,7 +2683,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                 <button
                   type="submit"
                   disabled={
-                    !input.trim() || isLoading || interviewEnded
+                    !input.trim() || isLoading || interviewEnded || isPaused
                   }
                   className="self-end rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 px-3 py-2 hover:from-purple-700 hover:to-pink-700 sm:self-auto"
                 >
@@ -2667,10 +2691,14 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                 </button>
               </form>
 
+              <p className="mt-3 text-center text-xs text-slate-300 sm:text-left">
+                Hold the mic to dictate into the answer box. Review the text, then tap send when you are ready.
+              </p>
+
               {/* Listening Indicator */}
               {isListening && (
                 <p className="text-center mt-3 text-green-500 text-sm animate-pulse">
-                  🎤 Listening...
+                  Hold to talk is active. Release the mic button to stop dictation.
                 </p>
               )}
             </div>
@@ -2687,7 +2715,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
               {/* Stats */}
               {cameraActive && (
-                <div className="text-sm space-y-1">
+                <div className="space-y-1 text-sm break-words">
                   <p>😊 Smile: {smileScore.toFixed(0)}%</p>
                   <p className={stressScore > 60 ? "text-red-400" : ""}>
                     😰 Stress: {stressScore.toFixed(0)}%
@@ -2705,7 +2733,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
               {/* Timer */}
               {interviewStarted && timeLeft !== null && (
-                <div className="text-lg font-mono bg-black/50 px-4 py-2 rounded-lg">
+                <div className="w-fit text-lg font-mono bg-black/50 px-4 py-2 rounded-lg">
                   ⏱ {interviewEnded ? "00:00" : formatTime(timeLeft)}
                 </div>
               )}
@@ -2821,23 +2849,23 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       {/* Pause modal – same style */}
       {
         (showMultiFaceModal || showSuspiciousObjectModal || showTabSwitchModal) && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/78">
-            <Card className="max-w-lg rounded-3xl border border-purple-500/30 bg-white p-10 text-center shadow-xl dark:bg-slate-900">
-              <h2 className="text-3xl font-bold text-red-600 mb-6">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/78 p-4">
+            <Card className="w-full max-w-lg rounded-3xl border border-purple-500/30 bg-white p-6 text-center shadow-xl dark:bg-slate-900 sm:p-10">
+              <h2 className="mb-4 text-2xl font-bold text-red-600 sm:mb-6 sm:text-3xl">
                 {showMultiFaceModal
                   ? "Multiple Faces Detected"
                   : showSuspiciousObjectModal
                     ? "Suspicious Object Detected"
                     : "Tab Switching Detected"}
               </h2>
-              <p className="text-xl mb-8 leading-relaxed">
+              <p className="mb-6 text-base leading-relaxed sm:mb-8 sm:text-xl">
                 {showMultiFaceModal
                   ? "Please make sure only you are visible during the interview."
                   : showSuspiciousObjectModal
                     ? `Please remove: ${suspiciousObjectsList.join(", ")} from view.`
                     : "Please return to the interview tab and keep it visible before continuing."}
               </p>
-              <p className="text-lg text-muted-foreground mb-10">
+              <p className="mb-8 text-sm text-muted-foreground sm:mb-10 sm:text-lg">
                 Click <strong>I've Fixed It</strong> to recheck and resume.
               </p>
               {resumeValidationMessage && (
@@ -2848,7 +2876,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                 type="button"
                 onClick={handleFixedIt}
                 disabled={isResumeChecking}
-                className="px-12 py-7 text-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                className="w-full px-8 py-6 text-base bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 sm:w-auto sm:px-12 sm:py-7 sm:text-xl"
               >
                 {isResumeChecking ? "Checking..." : "I've Fixed It"}
               </Button>
@@ -2858,7 +2886,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       }
 
       {/* Exit button */}
-      <Button asChild className="fixed bottom-4 right-4 h-11 w-24 rounded-lg bg-slate-500 pl-3 text-base font-medium text-black shadow-lg hover:bg-slate-600 sm:bottom-8 sm:right-8 sm:h-12 sm:w-28">
+      <Button asChild className="fixed bottom-4 right-4 h-11 rounded-lg bg-slate-500 px-3 text-sm font-medium text-black shadow-lg hover:bg-slate-600 sm:bottom-8 sm:right-8 sm:h-12 sm:px-4 sm:text-base">
         <Link href="/congratulations" aria-label="Exit interview">
           Exit
           <MoveRight className="ml-3 h-5 w-5" />
