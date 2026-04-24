@@ -235,6 +235,9 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const previousMessageCountRef = useRef(0);
   const [showNewMessagesButton, setShowNewMessagesButton] = useState(false);
   const recognitionRef = useRef<any>(null);
+  const isListeningRef = useRef(false);
+  const pendingTranscriptRef = useRef("");
+  const transcriptRafRef = useRef<number | null>(null);
   const hasEndedRef = useRef(false);
   const timerActiveRef = useRef(false);
   const cameraActiveRef = useRef(false);
@@ -250,6 +253,20 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const cheatingObjectEvidenceHitsRef = useRef<number[]>([]);
 
   const currentTimeRef = useRef<number | null>(null);
+
+  const flushTranscriptUpdate = useCallback((nextValue: string) => {
+    pendingTranscriptRef.current = nextValue;
+
+    if (transcriptRafRef.current !== null) return;
+
+    transcriptRafRef.current = requestAnimationFrame(() => {
+      transcriptRafRef.current = null;
+      const latestValue = pendingTranscriptRef.current;
+      setInput((previous) =>
+        previous === latestValue ? previous : latestValue,
+      );
+    });
+  }, []);
 
   const clampPercent = (value: number) => Math.max(0, Math.min(100, value));
   const clampInterval = (value: number, min: number, max: number) =>
@@ -1678,25 +1695,80 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         if (e.results[i].isFinal) final += part + " ";
         else interim += part;
       }
-      setInput(final.trim() + " " + interim);
+      flushTranscriptUpdate(`${final.trim()} ${interim}`.trim());
     };
 
-    rec.onerror = () => setIsListening(false);
-    rec.onend = () => setIsListening(false);
+    rec.onstart = () => {
+      isListeningRef.current = true;
+      setIsListening(true);
+    };
+
+    rec.onerror = () => {
+      isListeningRef.current = false;
+      setIsListening(false);
+    };
+
+    rec.onend = () => {
+      isListeningRef.current = false;
+      setIsListening(false);
+    };
 
     recognitionRef.current = rec;
 
-    return () => rec.stop();
-  }, []);
+    return () => {
+      rec.onresult = null;
+      rec.onstart = null;
+      rec.onerror = null;
+      rec.onend = null;
+      rec.stop();
+
+      if (transcriptRafRef.current !== null) {
+        cancelAnimationFrame(transcriptRafRef.current);
+        transcriptRafRef.current = null;
+      }
+    };
+  }, [flushTranscriptUpdate]);
+
+  useEffect(() => {
+    if (!interviewStarted || isPaused || interviewEnded) {
+      if (recognitionRef.current && isListeningRef.current) {
+        recognitionRef.current.stop();
+      }
+    }
+  }, [interviewStarted, isPaused, interviewEnded]);
 
   const toggleVoiceInput = () => {
-    if (!recognitionRef.current) return alert("Speech not supported");
-    if (isListening) {
-      recognitionRef.current.stop();
-    } else {
-      recognitionRef.current.start();
+    if (!recognitionRef.current) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          text: "Speech-to-text is not supported in this browser. Try Chrome or Edge.",
+          isBot: true,
+        },
+      ]);
+      return;
     }
-    setIsListening(!isListening);
+
+    if (isListeningRef.current) {
+      recognitionRef.current.stop();
+      return;
+    }
+
+    try {
+      recognitionRef.current.start();
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to start speech recognition.";
+      setMessages((prev) => [
+        ...prev,
+        {
+          text: `Speech-to-text error: ${message}`,
+          isBot: true,
+        },
+      ]);
+    }
   };
 
   // ────────────────────────────────────────────────
