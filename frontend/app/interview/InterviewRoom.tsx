@@ -135,6 +135,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const [isCameraOn, setIsCameraOn] = useState(true);
   const [isMicOn, setIsMicOn] = useState(true);
   const [isListening, setIsListening] = useState(false);
+  const [speechToTextAvailable, setSpeechToTextAvailable] = useState(true);
   const [codeInput, setCodeInput] = useState("");
   const [codeCheckResult, setCodeCheckResult] = useState<{
     status: "idle" | "ok" | "warn" | "error";
@@ -186,10 +187,10 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const OBJECT_ALERT_COOLDOWN_MS = 8000;
   const MULTI_FACE_ALERT_COOLDOWN_MS = 5000;
   const MULTI_FACE_SUSPICIOUS_CONSECUTIVE_FRAMES = 1;
-  const FACE_DETECTION_INTERVAL_MS = 340;
-  const OBJECT_DETECTION_INTERVAL_MS = 700;
-  const FACE_DETECTION_MIN_INTERVAL_MS = 240;
-  const FACE_DETECTION_MAX_INTERVAL_MS = 820;
+  const FACE_DETECTION_INTERVAL_MS = 520;
+  const OBJECT_DETECTION_INTERVAL_MS = 1150;
+  const FACE_DETECTION_MIN_INTERVAL_MS = 380;
+  const FACE_DETECTION_MAX_INTERVAL_MS = 1250;
   const FACE_DETECTION_INPUT_SIZE = 224;
   const FACE_DETECTION_SCORE_THRESHOLD = 0.3;
   const FACE_VALIDATION_INPUT_SIZE = 256;
@@ -197,8 +198,8 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const FACE_FALLBACK_INPUT_SIZE = 320;
   const FACE_FALLBACK_SCORE_THRESHOLD = 0.22;
   const FACE_FALLBACK_COOLDOWN_MS = 700;
-  const OBJECT_DETECTION_MIN_INTERVAL_MS = 420;
-  const OBJECT_DETECTION_MAX_INTERVAL_MS = 1250;
+  const OBJECT_DETECTION_MIN_INTERVAL_MS = 900;
+  const OBJECT_DETECTION_MAX_INTERVAL_MS = 2200;
   const OBJECT_SUSPICIOUS_MIN_SCORE = 0.5;
   const OBJECT_SUSPICIOUS_MIN_AREA_RATIO = 0.04;
   const OBJECT_PHONE_MIN_SCORE = 0.22;
@@ -275,6 +276,14 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     inputRef.current = input;
   }, [input]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const hasSpeechApi =
+      "SpeechRecognition" in window || "webkitSpeechRecognition" in window;
+    setSpeechToTextAvailable(hasSpeechApi);
+  }, []);
+
   const startVoiceRecognition = useCallback(() => {
     if (!recognitionRef.current) return;
     if (
@@ -322,7 +331,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     async (
       video: HTMLVideoElement,
       mode: "live" | "validation" | "fallback" = "live",
-    ) => {
+    ): Promise<any[]> => {
       const inputSize =
         mode === "validation"
           ? FACE_VALIDATION_INPUT_SIZE
@@ -336,13 +345,16 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
             ? FACE_FALLBACK_SCORE_THRESHOLD
             : FACE_DETECTION_SCORE_THRESHOLD;
 
-      return faceapi
-        .detectAllFaces(
-          video,
-          new faceapi.TinyFaceDetectorOptions({ inputSize, scoreThreshold }),
-        )
-        .withFaceLandmarks()
-        .withFaceExpressions();
+      const baseDetections = await faceapi.detectAllFaces(
+        video,
+        new faceapi.TinyFaceDetectorOptions({ inputSize, scoreThreshold }),
+      );
+
+      if (mode === "live") {
+        return faceapi.recognizeFaceExpressions(video, baseDetections);
+      }
+
+      return baseDetections;
     },
     [],
   );
@@ -350,6 +362,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     async (
       video: HTMLVideoElement,
       detections: Awaited<ReturnType<typeof detectFacesForMode>>,
+      mode: "live" | "validation" | "fallback" = "live",
     ) => {
       const now = Date.now();
       const bestPrimaryScore = detections.reduce((maxScore, detection) => {
@@ -371,7 +384,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       lastFaceFallbackCheckRef.current = now;
 
       try {
-        const fallbackDetections = await detectFacesForMode(video, "fallback");
+        const fallbackDetections = await detectFacesForMode(video, mode);
         return fallbackDetections.length > detections.length
           ? fallbackDetections
           : detections;
@@ -863,7 +876,11 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
     try {
       const primaryDetections = await detectFacesForMode(video, "validation");
-      const detections = await maybeRunFaceFallback(video, primaryDetections);
+      const detections = await maybeRunFaceFallback(
+        video,
+        primaryDetections,
+        "validation",
+      );
 
       if (detections.length > 1) {
         return {
@@ -1069,7 +1086,11 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
     try {
       const primaryDetections = await detectFacesForMode(video, "live");
-      const detections = await maybeRunFaceFallback(video, primaryDetections);
+      const detections = await maybeRunFaceFallback(
+        video,
+        primaryDetections,
+        "live",
+      );
 
       const now = performance.now();
       const shouldUpdateEmotionUi =
@@ -1743,8 +1764,12 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   //  Speech Recognition
   // ────────────────────────────────────────────────
   useEffect(() => {
-    if (!("SpeechRecognition" in window || "webkitSpeechRecognition" in window))
+    if (!("SpeechRecognition" in window || "webkitSpeechRecognition" in window)) {
+      setSpeechToTextAvailable(false);
       return;
+    }
+
+    setSpeechToTextAvailable(true);
 
     const SpeechRecognition =
       (window as any).SpeechRecognition ||
@@ -1804,6 +1829,14 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
           ...prev,
           {
             text: "Microphone permission is blocked for speech-to-text. Allow mic access and try again.",
+            isBot: true,
+          },
+        ]);
+      } else if (errorType === "network" || errorType === "service-not-allowed") {
+        setMessages((prev) => [
+          ...prev,
+          {
+            text: "Speech-to-text is unavailable in this browser session. Try Chrome or Edge with microphone permission enabled.",
             isBot: true,
           },
         ]);
@@ -1898,10 +1931,22 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
   const startVoiceInput = useCallback(() => {
     if (!recognitionRef.current) {
+      setSpeechToTextAvailable(false);
       setMessages((prev) => [
         ...prev,
         {
           text: "Speech-to-text is not supported in this browser. Try Chrome or Edge.",
+          isBot: true,
+        },
+      ]);
+      return;
+    }
+
+    if (typeof window !== "undefined" && !window.isSecureContext) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          text: "Speech-to-text needs a secure browser context. Open the site over HTTPS or localhost and try again.",
           isBot: true,
         },
       ]);
@@ -2440,7 +2485,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
 
         <div className="flex flex-col gap-6 xl:flex-row">
           {/* LEFT: Chat */}
-          <Card className="relative flex min-h-[36rem] flex-col bg-white/90 backdrop-blur-xl border border-gray-200/50 dark:bg-black/70 dark:border-white/10 xl:h-[85vh] xl:min-h-0 xl:flex-[0.68]">
+          <Card className="relative flex min-h-[28rem] flex-col border border-gray-200/50 bg-white/90 backdrop-blur-xl dark:border-white/10 dark:bg-black/70 sm:min-h-[34rem] xl:h-[85vh] xl:min-h-0 xl:flex-[0.68]">
             {/* {cameraActive && (
               <div
                 className="absolute top-3 right-3 bg-black/65 text-white text-sm px-3 py-2 rounded-md font-mono z-10 shadow"
@@ -2597,6 +2642,14 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                   onPointerUp={handleVoicePressEnd}
                   onPointerLeave={handleVoicePressEnd}
                   onPointerCancel={handleVoicePressEnd}
+                  onTouchStart={(e) => {
+                    e.preventDefault();
+                    handleVoicePressStart();
+                  }}
+                  onTouchEnd={(e) => {
+                    e.preventDefault();
+                    handleVoicePressEnd();
+                  }}
                   onKeyDown={(e) => {
                     if ((e.key === " " || e.key === "Enter") && !e.repeat) {
                       e.preventDefault();
@@ -2610,11 +2663,13 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                     }
                   }}
                   aria-label="Hold microphone button to dictate"
-                  disabled={!interviewStarted || interviewEnded || isPaused}
-                  className={`flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold text-white transition sm:self-auto ${
+                  disabled={!interviewStarted || interviewEnded || isPaused || !speechToTextAvailable}
+                  className={`touch-none select-none flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold text-white transition sm:self-auto ${
                     isListening
                       ? "bg-red-600 shadow-lg shadow-red-900/40 animate-pulse"
-                      : "bg-white/10 hover:bg-white/20"
+                      : speechToTextAvailable
+                        ? "bg-white/10 hover:bg-white/20"
+                        : "cursor-not-allowed bg-white/5 text-white/60"
                   }`}
                 >
                   <Mic className="h-5 w-5 text-white" />
@@ -2692,7 +2747,9 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
               </form>
 
               <p className="mt-3 text-center text-xs text-slate-300 sm:text-left">
-                Hold the mic to dictate into the answer box. Review the text, then tap send when you are ready.
+                {speechToTextAvailable
+                  ? "Hold the mic to dictate into the answer box. Review the text, then tap send when you are ready."
+                  : "Speech-to-text is only available in supported Chrome/Edge browser sessions with microphone permission enabled."}
               </p>
 
               {/* Listening Indicator */}
