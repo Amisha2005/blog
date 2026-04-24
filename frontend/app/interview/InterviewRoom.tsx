@@ -204,8 +204,8 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const OBJECT_DETECTION_MAX_INTERVAL_MS = 950;
   const OBJECT_SUSPICIOUS_MIN_SCORE = 0.5;
   const OBJECT_SUSPICIOUS_MIN_AREA_RATIO = 0.04;
-  const OBJECT_PHONE_MIN_SCORE = 0.08;
-  const OBJECT_PHONE_MIN_AREA_RATIO = 0.002;
+  const OBJECT_PHONE_MIN_SCORE = 0.22;
+  const OBJECT_PHONE_MIN_AREA_RATIO = 0.004;
   const OBJECT_TABLET_MIN_SCORE = 0.18;
   const OBJECT_TABLET_MIN_AREA_RATIO = 0.009;
   const OBJECT_HANDHELD_AID_MIN_SCORE = 0.3;
@@ -216,10 +216,10 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const OBJECT_LAPTOP_MIN_AREA_RATIO = 0.1;
   const OBJECT_USER_LAPTOP_BOTTOM_ZONE = 0.7;
   const OBJECT_SUSPICIOUS_CONSECUTIVE_FRAMES = 3;
-  const CHEATING_OBJECT_EVIDENCE_WINDOW_MS = 1800;
-  const CHEATING_OBJECT_EVIDENCE_REQUIRED_HITS = 1;
-  const CHEATING_OBJECT_EVIDENCE_MIN_SCORE = 0.06;
-  const CHEATING_OBJECT_EVIDENCE_MIN_AREA_RATIO = 0.0012;
+  const CHEATING_OBJECT_EVIDENCE_WINDOW_MS = 2200;
+  const CHEATING_OBJECT_EVIDENCE_REQUIRED_HITS = 2;
+  const CHEATING_OBJECT_EVIDENCE_MIN_SCORE = 0.2;
+  const CHEATING_OBJECT_EVIDENCE_MIN_AREA_RATIO = 0.003;
   const EMOTION_UI_UPDATE_INTERVAL_MS = 500;
   const DEBUG_OBJECT_UPDATE_INTERVAL_MS = 450;
   const emotionLoopTimeoutRef = useRef<any>(null);
@@ -239,6 +239,8 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const isRecognitionStartingRef = useRef(false);
   const shouldKeepListeningRef = useRef(false);
   const recognitionRestartTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const inputRef = useRef("");
+  const dictationBaseInputRef = useRef("");
   const pendingTranscriptRef = useRef("");
   const transcriptRafRef = useRef<number | null>(null);
   const hasEndedRef = useRef(false);
@@ -271,10 +273,26 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     });
   }, []);
 
+  useEffect(() => {
+    inputRef.current = input;
+  }, [input]);
+
   const startVoiceRecognition = useCallback(() => {
     if (!recognitionRef.current) return;
-    if (!interviewStarted || isPaused || interviewEnded) return;
+    if (
+      !interviewStartedRef.current ||
+      isPausedRef.current ||
+      interviewEndedRef.current
+    ) {
+      return;
+    }
     if (isRecognitionStartingRef.current || isListeningRef.current) return;
+
+    const audioTrack = streamRef.current?.getAudioTracks?.()[0];
+    if (audioTrack && !audioTrack.enabled) {
+      audioTrack.enabled = true;
+      setIsMicOn(true);
+    }
 
     try {
       isRecognitionStartingRef.current = true;
@@ -295,7 +313,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       ]);
       shouldKeepListeningRef.current = false;
     }
-  }, [interviewStarted, isPaused, interviewEnded]);
+  }, []);
 
   const clampPercent = (value: number) => Math.max(0, Math.min(100, value));
   const clampInterval = (value: number, min: number, max: number) =>
@@ -696,8 +714,8 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         }
 
         if (isPhone) {
-          if (phoneScore >= 0.5 && areaRatio >= 0.0025) return true;
-          if (phoneScore >= 0.3 && areaRatio >= 0.005) return true;
+          if (phoneScore >= 0.55 && areaRatio >= 0.004) return true;
+          if (phoneScore >= 0.4 && areaRatio >= 0.007) return true;
           return (
             phoneScore >= OBJECT_PHONE_MIN_SCORE &&
             areaRatio >= OBJECT_PHONE_MIN_AREA_RATIO
@@ -1295,11 +1313,15 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
             : [];
 
       const requiredSuspiciousFrames =
-        hasPhoneLikeSuspicious || hasScreenLikeSuspicious || hasCheatingObjectEvidenceAlert
-        ? 1
-        : hasBookLikeSuspicious
-          ? 2
-          : OBJECT_SUSPICIOUS_CONSECUTIVE_FRAMES;
+        hasPhoneLikeSuspicious
+          ? Math.max(3, OBJECT_SUSPICIOUS_CONSECUTIVE_FRAMES)
+          : hasScreenLikeSuspicious
+            ? Math.max(2, OBJECT_SUSPICIOUS_CONSECUTIVE_FRAMES - 1)
+            : hasCheatingObjectEvidenceAlert
+              ? 2
+              : hasBookLikeSuspicious
+                ? 2
+                : OBJECT_SUSPICIOUS_CONSECUTIVE_FRAMES;
 
       if (detectionsForAlert.length > 0) {
         suspiciousFrameStreakRef.current += 1;
@@ -1714,6 +1736,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     const rec = new SpeechRecognition();
     rec.continuous = true;
     rec.interimResults = true;
+    rec.maxAlternatives = 1;
     rec.lang = "en-US";
 
     let final = "";
@@ -1724,7 +1747,10 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         if (e.results[i].isFinal) final += part + " ";
         else interim += part;
       }
-      flushTranscriptUpdate(`${final.trim()} ${interim}`.trim());
+      const transcript = `${final.trim()} ${interim}`.trim();
+      const baseInput = dictationBaseInputRef.current.trim();
+      const mergedValue = baseInput ? `${baseInput} ${transcript}`.trim() : transcript;
+      flushTranscriptUpdate(mergedValue);
     };
 
     rec.onstart = () => {
@@ -1854,6 +1880,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     }
 
     shouldKeepListeningRef.current = true;
+    dictationBaseInputRef.current = inputRef.current;
     startVoiceRecognition();
   };
 
