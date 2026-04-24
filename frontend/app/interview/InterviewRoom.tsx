@@ -238,6 +238,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const isListeningRef = useRef(false);
   const isRecognitionStartingRef = useRef(false);
   const shouldKeepListeningRef = useRef(false);
+  const wasListeningBeforePauseRef = useRef(false);
   const recognitionRestartTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const inputRef = useRef("");
   const dictationBaseInputRef = useRef("");
@@ -300,6 +301,8 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       recognitionRef.current.start();
     } catch (error) {
       isRecognitionStartingRef.current = false;
+      isListeningRef.current = false;
+      setIsListening(false);
       const message =
         error instanceof Error
           ? error.message
@@ -465,6 +468,28 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       labels: string[] = [],
     ) => {
       stopDetectionLoops();
+
+      // Stop speech recognition and remember if it was active
+      wasListeningBeforePauseRef.current =
+        isListeningRef.current || shouldKeepListeningRef.current;
+      shouldKeepListeningRef.current = false;
+
+      if (recognitionRestartTimeoutRef.current) {
+        clearTimeout(recognitionRestartTimeoutRef.current);
+        recognitionRestartTimeoutRef.current = null;
+      }
+
+      if (recognitionRef.current && isListeningRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch {
+          /* ignore */
+        }
+      }
+      isListeningRef.current = false;
+      isRecognitionStartingRef.current = false;
+      setIsListening(false);
+
       setActiveViolation(type);
       setResumeValidationMessage("");
       setIsResumeChecking(false);
@@ -916,6 +941,13 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     multiFaceFrameStreakRef.current = 0;
     cheatingObjectEvidenceHitsRef.current = [];
     lastObjectAlertTimeRef.current = Date.now();
+
+    // Restart speech recognition if it was active before the pause
+    if (wasListeningBeforePauseRef.current) {
+      wasListeningBeforePauseRef.current = false;
+      shouldKeepListeningRef.current = true;
+      startVoiceRecognition();
+    }
 
     setMessages((prev) => {
       const resumedMessages = [...prev, { text: "Checks passed. Resuming interview.", isBot: true }];
@@ -1780,6 +1812,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         permissionError || errorType === "audio-capture" || errorType === "aborted";
 
       if (!fatalStopError && shouldKeepListeningRef.current) {
+        isListeningRef.current = true;
         setIsListening(true);
       } else {
         isListeningRef.current = false;
@@ -1806,6 +1839,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         interviewStartedRef.current &&
         !interviewEndedRef.current
       ) {
+        isListeningRef.current = true;
         setIsListening(true);
 
         if (recognitionRestartTimeoutRef.current) {
