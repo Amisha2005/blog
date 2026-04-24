@@ -787,22 +787,28 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         categories?: Array<{ categoryName?: string; score?: number }>;
       },
     ) => {
-      const labels = (detection.categories || [])
-        .map((category) => (category.categoryName || "").toLowerCase())
-        .filter(Boolean);
+      const categories = (detection.categories || [])
+        .map((category) => ({
+          label: (category.categoryName || "").toLowerCase(),
+          score: Number(category.score || 0),
+        }))
+        .filter((category) => Boolean(category.label));
 
-      const findLabel = (matcher: RegExp) => labels.find((label) => matcher.test(label));
-
-      return (
-        findLabel(PHONE_LIKE_PATTERN) ||
-        findLabel(TABLET_LIKE_PATTERN) ||
-        findLabel(LAPTOP_LIKE_PATTERN) ||
-        findLabel(SCREEN_LIKE_PATTERN) ||
-        findLabel(BOOK_LIKE_PATTERN) ||
-        findLabel(HANDHELD_AID_PATTERN) ||
-        labels[0] ||
-        "unknown"
+      const suspiciousCandidates = categories.filter((category) =>
+        PHONE_LIKE_PATTERN.test(category.label) ||
+        TABLET_LIKE_PATTERN.test(category.label) ||
+        LAPTOP_LIKE_PATTERN.test(category.label) ||
+        SCREEN_LIKE_PATTERN.test(category.label) ||
+        BOOK_LIKE_PATTERN.test(category.label) ||
+        HANDHELD_AID_PATTERN.test(category.label),
       );
+
+      if (suspiciousCandidates.length > 0) {
+        suspiciousCandidates.sort((a, b) => b.score - a.score);
+        return suspiciousCandidates[0].label;
+      }
+
+      return categories[0]?.label || "unknown";
     },
     [],
   );
@@ -906,6 +912,10 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
     setShowTabSwitchModal(false);
     setIsPaused(false);
     isPausedRef.current = false;
+    suspiciousFrameStreakRef.current = 0;
+    multiFaceFrameStreakRef.current = 0;
+    cheatingObjectEvidenceHitsRef.current = [];
+    lastObjectAlertTimeRef.current = Date.now();
 
     setMessages((prev) => {
       const resumedMessages = [...prev, { text: "Checks passed. Resuming interview.", isBot: true }];
@@ -1276,7 +1286,8 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       const hasPhoneLikeSuspicious = suspicious.some((detection) =>
         (detection.categories || []).some((category) => {
           const label = (category.categoryName || "").toLowerCase();
-          return PHONE_LIKE_PATTERN.test(label);
+          const score = Number(category.score || 0);
+          return PHONE_LIKE_PATTERN.test(label) && score >= OBJECT_PHONE_MIN_SCORE;
         }),
       );
 
@@ -1793,7 +1804,6 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
       if (
         shouldKeepListeningRef.current &&
         interviewStartedRef.current &&
-        !isPausedRef.current &&
         !interviewEndedRef.current
       ) {
         setIsListening(true);
@@ -1837,7 +1847,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   }, [flushTranscriptUpdate, startVoiceRecognition]);
 
   useEffect(() => {
-    if (!interviewStarted || isPaused || interviewEnded) {
+    if (!interviewStarted || interviewEnded) {
       shouldKeepListeningRef.current = false;
       isRecognitionStartingRef.current = false;
       setIsListening(false);
@@ -1851,7 +1861,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
         recognitionRef.current.stop();
       }
     }
-  }, [interviewStarted, isPaused, interviewEnded]);
+  }, [interviewStarted, interviewEnded]);
 
   const toggleVoiceInput = () => {
     if (!recognitionRef.current) {
@@ -2012,6 +2022,30 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading || interviewEnded) return;
+
+    const normalizedInput = input.trim().toLowerCase();
+
+    if (isPaused) {
+      const wantsResume = /^(yes|ok|continue|resume|fixed|i fixed it)$/i.test(
+        normalizedInput,
+      );
+
+      if (wantsResume) {
+        setInput("");
+        void handleFixedIt();
+        return;
+      }
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          text: "Interview is paused. Remove the flagged issue, then type 'yes' or click 'I've Fixed It'.",
+          isBot: true,
+        },
+      ]);
+      setInput("");
+      return;
+    }
 
     if (!interviewStarted) {
       setMessages((p) => [
@@ -2523,7 +2557,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                 <button
                   type="button"
                   onClick={toggleVoiceInput}
-                  disabled={!interviewStarted || isPaused || interviewEnded}
+                  disabled={!interviewStarted || interviewEnded}
                   className={`self-start rounded-lg p-2 ${isListening
                     ? "bg-red-600 animate-pulse"
                     : "hover:bg-white/10"
@@ -2577,7 +2611,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                         ? "Type your answer..."
                         : "Complete setup and start interview"
                   }
-                  disabled={!interviewStarted || isPaused || interviewEnded}
+                  disabled={!interviewStarted || interviewEnded}
                   className="min-h-11 flex-1 resize-none bg-transparent px-2 text-white outline-none"
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
@@ -2591,7 +2625,7 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
                 <button
                   type="submit"
                   disabled={
-                    !input.trim() || isLoading || interviewEnded || isPaused
+                    !input.trim() || isLoading || interviewEnded
                   }
                   className="self-end rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 px-3 py-2 hover:from-purple-700 hover:to-pink-700 sm:self-auto"
                 >
