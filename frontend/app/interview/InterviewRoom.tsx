@@ -344,15 +344,19 @@ export default function InterviewRoom({ selectedTopic }: InterviewRoomProps) {
           : mode === "fallback"
             ? FACE_FALLBACK_SCORE_THRESHOLD
             : FACE_DETECTION_SCORE_THRESHOLD;
+      const detectorOptions = new faceapi.TinyFaceDetectorOptions({
+        inputSize,
+        scoreThreshold,
+      });
+
+      if (mode === "live") {
+        return faceapi.detectAllFaces(video, detectorOptions).withFaceExpressions();
+      }
 
       const baseDetections = await faceapi.detectAllFaces(
         video,
-        new faceapi.TinyFaceDetectorOptions({ inputSize, scoreThreshold }),
+        detectorOptions,
       );
-
-      if (mode === "live") {
-        return faceapi.recognizeFaceExpressions(video, baseDetections);
-      }
 
       return baseDetections;
     },
