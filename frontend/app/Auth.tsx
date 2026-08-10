@@ -5,14 +5,29 @@ import { signOut, useSession } from "next-auth/react";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "https://virtual-interview-32pw.onrender.com";
 
-// Define User Type (Recommended)
 type User = {
   _id: string;
   username?: string;
   email: string;
-  role: "user" | "admin";     // ← Important for admin check
-  isAdmin?: boolean;          // Optional fallback
-  // Add other fields your backend returns
+
+  role: "candidate" | "admin";
+
+  isAdmin?: boolean;
+
+  phone?: string;
+  college?: string;
+  degree?: string;
+  branch?: string;
+  bio?: string;
+  github?: string;
+  linkedin?: string;
+  profileImage?: string;
+
+  resume?: {
+    url: string;
+    public_id: string;
+    uploadedAt: string;
+  };
 };
 
 type AuthContextType = {

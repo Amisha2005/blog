@@ -39,4 +39,22 @@ const authMiddleware = async (req, res, next) => {
     return res.status(401).json({ message: "unathorized invalid token" });
   }
 };
-module.exports = authMiddleware;
+const adminMiddleware = (req, res, next) => {
+  try {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({
+        message: "Access denied. Admin only.",
+      });
+    }
+
+    next();
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      message: "Internal Server Error",
+    });
+  }
+};
+
+// module.exports = adminMiddleware;
+module.exports = {authMiddleware,adminMiddleware};

@@ -2,7 +2,7 @@
 const express = require("express");
 const { Groq } = require("groq-sdk");
 const app = express();
-const PORT = Number(process.env.PORT) || 5000;
+const PORT = Number(process.env.PORT) || 8000;
 const connectDb = require("./utils/db");
 const seedUsersIfNeeded = require("./utils/seedUsers");
 require("dotenv").config();
@@ -11,7 +11,8 @@ const authRoute = require("./Router/auth-router");
 const adminRoutes = require("./Router/admin");// In-memory store (restart server → loses history → ok for dev)
 const topicRoutes = require("./Router/topicRoutes");
 const InterviewResult = require("./model/interviewResult");
-
+const companyRoute = require("./Router/company-route");
+const roleRoute = require("./Router/role-route");
 const defaultCorsOrigins = [
   "http://localhost:3000",
   "https://virtualinterview.vercel.app",
@@ -35,8 +36,11 @@ app.use(cors(corsOptions));
 
 app.use(express.json());
 app.use("/api/auth", authRoute);
+// app.use("/api/auth", authRoute);
 app.use("/api/admin", adminRoutes);
 app.use("/api", topicRoutes);   // or app.use("/api", topicRoutes);
+app.use("/api/company", companyRoute);
+app.use("/api/role", roleRoute);
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
 });

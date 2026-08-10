@@ -10,34 +10,178 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import { useState } from "react";
+import { useState ,useEffect} from "react";
 import { LogOut, Mail, Calendar, Edit2, Save } from "lucide-react";
 
 export default function AccountPage() {
-  const { user, isLoading, LogoutUser } = useAuth();
+  const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL ||
+  "https://virtual-interview-32pw.onrender.com";
+const { user, isLoading, LogoutUser, authorizationToken } = useAuth();
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
-  const [draftName, setDraftName] = useState("");
-  const [draftBio, setDraftBio] = useState("Full-stack developer | Next.js & Tailwind enthusiast");
+  // const [resume, setResume] = useState<File | null>(null);
+const [uploadedResume, setUploadedResume] = useState<any>(null);
+  const [profile, setProfile] = useState({
+  username: "",
+  phone: "",
+  college: "",
+  degree: "",
+  branch: "",
+  bio: "",
+  github: "",
+  linkedin: "",
+  profileImage: "",
+});
+const [resume, setResume] = useState<File | null>(null);
+const [resumeUrl, setResumeUrl] = useState("");
   const displayName = user?.username || (user?.email ? user.email.split("@")[0] : "User");
 
   const handleLogout = () => {
     LogoutUser();
     router.push("/");
   };
-
   const handleToggleEdit = () => {
-    if (!user) return;
-    setIsEditing((prev) => {
-      const next = !prev;
-      if (!prev && next) {
-        setDraftName(user.username || "");
-        setDraftBio("");
-      }
-      return next;
-    });
-  };
+  if (!user) return;
+  setIsEditing((prev) => {
+    const next = !prev;
+    if (!prev && next) {
+      setProfile({
+        username: user.username || "",
+        phone: user.phone || "",
+        college: user.college || "",
+        degree: user.degree || "",
+        branch: user.branch || "",
+        bio: user.bio || "",
+        github: user.github || "",
+        linkedin: user.linkedin || "",
+        profileImage: user.profileImage || "",
+      });
+    }
+    return next;
+  });
+};
 
+// 👇 Add this function here
+const handleChange = (
+  e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+) => {
+  setProfile({
+    ...profile,
+    [e.target.name]: e.target.value,
+  });
+};
+const handleSaveProfile = async () => {
+  try {
+    console.log(API_BASE_URL);
+console.log(authorizationToken);
+console.log(profile);
+    const response = await fetch(`${API_BASE_URL}/api/auth/profile`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: authorizationToken!,
+      },
+      body: JSON.stringify(profile),
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      alert("Profile updated successfully!");
+      setIsEditing(false);
+    } else {
+      alert(data.message || "Failed to update profile.");
+    }
+  } catch (error) {
+    console.error(error);
+    alert("Something went wrong.");
+  }
+};
+const handleResumeChange = (
+  e: React.ChangeEvent<HTMLInputElement>
+) => {
+  if (e.target.files && e.target.files.length > 0) {
+    setResume(e.target.files[0]);
+  }
+};
+const handleSave = async () => {
+  try {
+    const token = localStorage.getItem("token");
+
+    const response = await fetch(
+      `${API_BASE_URL}/api/auth/profile`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(profile),
+      }
+    );
+
+    const data = await response.json();
+
+    if (response.ok) {
+      alert("Profile updated successfully.");
+      setIsEditing(false);
+    } else {
+      alert(data.message);
+    }
+  } catch (error) {
+    console.error(error);
+  }
+};
+const handleResumeUpload = async () => {
+  if (!resume) {
+    alert("Please select a PDF file.");
+    return;
+  }
+
+  try {
+      console.log("Resume:", resume);
+  console.log("Is File:", resume instanceof File);
+    const formData = new FormData();
+    formData.append("resume", resume);
+
+    const response = await fetch(`${API_BASE_URL}/api/auth/resume`, {
+      method: "POST",
+      headers: {
+        Authorization: authorizationToken!,
+      },
+      body: formData,
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      alert("Resume uploaded successfully!");
+      setUploadedResume(data.resume);
+      setResume(null);
+    } else {
+      alert(data.message || "Failed to upload resume.");
+    }
+  } catch (error) {
+    console.error("Resume Upload Error:", error);
+    alert("Something went wrong.");
+  }
+};
+useEffect(() => {
+  if (user) {
+    setProfile({
+      username: user.username || "",
+      phone: user.phone || "",
+      college: user.college || "",
+      degree: user.degree || "",
+      branch: user.branch || "",
+      bio: user.bio || "",
+      github: user.github || "",
+      linkedin: user.linkedin || "",
+      profileImage: user.profileImage || "",
+    });
+  }
+}, [user]);
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-slate-950 dark:to-slate-900">
@@ -94,13 +238,13 @@ export default function AccountPage() {
               <Avatar className="h-32 w-32 ring-8 ring-background shadow-2xl">
                 <AvatarImage src="/avatar.jpg" />
                 <AvatarFallback className="text-3xl font-bold bg-gradient-to-br from-purple-500 to-pink-500 text-white">
-                 {displayName.charAt(0).toUpperCase()}
+                 {(profile.username || "U").charAt(0).toUpperCase()}
                 </AvatarFallback>
               </Avatar>
 
               <div className="text-center sm:text-left flex-1">
                 <h2 className="text-3xl font-bold flex items-center gap-3 justify-center sm:justify-start">
-                  {displayName}
+                  {profile.username || "User"}
                   <Badge variant="secondary" className="ml-2">Pro Member</Badge>
                 </h2>
                 <p className="text-muted-foreground flex items-center gap-2 justify-center sm:justify-start mt-1">
@@ -114,7 +258,7 @@ export default function AccountPage() {
               <Button
                 size="lg"
                 variant={isEditing ? "default" : "outline"}
-                onClick={handleToggleEdit}
+                onClick={isEditing ? handleSaveProfile : handleToggleEdit}
                 className="shadow-lg"
               >
                 {isEditing ? (
@@ -149,31 +293,84 @@ export default function AccountPage() {
                 <div className="grid gap-6 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="name">Full Name</Label>
-                    <Input
-                      id="name"
-                      value={isEditing ? draftName : displayName}
-                      onChange={(e) => setDraftName(e.target.value)}
-                      disabled={!isEditing}
-                      className="h-12"
-                    />
+                   <Input
+  id="username"
+  name="username"
+  value={profile.username}
+  onChange={handleChange}
+  disabled={!isEditing}
+  className="h-12"
+/>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="email">Email Address</Label>
                    <Input value={user.email} disabled className="h-12" ></Input>
                   </div>
                 </div>
+ <div className="grid gap-6 sm:grid-cols-2">
+  <div className="space-y-2">
+    <Label>Phone</Label>
+    <Input
+      name="phone"
+      value={profile.phone}
+      onChange={handleChange}
+      disabled={!isEditing}
+      className="h-12"
+    />
+  </div>
 
+  <div className="space-y-2">
+    <Label>College</Label>
+    <Input
+      name="college"
+      value={profile.college}
+      onChange={handleChange}
+      disabled={!isEditing}
+      className="h-12"
+    />
+  </div>
+</div>
                 <div className="space-y-2">
                   <Label htmlFor="bio">Bio</Label>
-                  <textarea
-                    id="bio"
-                    value={draftBio}
-                    onChange={(e) => setDraftBio(e.target.value)}
-                    disabled={!isEditing}
-                    rows={4}
-                    className="w-full rounded-lg border border-input bg-background px-4 py-3 text-sm ring-offset-background disabled:cursor-not-allowed disabled:opacity-50"
-                  />
+                 <textarea
+  id="bio"
+  name="bio"
+  value={profile.bio}
+  onChange={handleChange}
+  disabled={!isEditing}
+  rows={4}
+  className="w-full rounded-lg border border-input bg-background px-4 py-3 text-sm ring-offset-background disabled:cursor-not-allowed disabled:opacity-50"
+/>
                 </div>
+                <Input
+  type="file"
+  accept=".pdf"
+  onChange={handleResumeChange}
+/>
+<Button onClick={handleResumeUpload}>
+  Upload Resume
+</Button>
+{uploadedResume && (
+  <div className="space-y-2">
+    <p className="text-green-600 font-medium">
+      Resume uploaded successfully
+    </p>
+
+    <a
+      href={uploadedResume.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-blue-600 underline"
+    >
+      View Resume
+    </a>
+
+    <p className="text-sm text-muted-foreground">
+      Uploaded:{" "}
+      {new Date(uploadedResume.uploadedAt).toLocaleString()}
+    </p>
+  </div>
+)}
               </CardContent>
             </Card>
           </TabsContent>

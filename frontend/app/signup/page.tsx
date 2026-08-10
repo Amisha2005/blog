@@ -18,7 +18,6 @@ import { useState } from "react";
 import { useAuth } from "../Auth";
 import { signIn } from "next-auth/react";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "https://virtual-interview-32pw.onrender.com";
 
 const handleGithubLogin=async() => {
   await signIn("github",{
@@ -32,6 +31,7 @@ const handleGoogleLogin=async() => {
 }
 
 export default function SignUpPage() {
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "https://virtual-interview-32pw.onrender.com";
   const router = useRouter();
 
   const [user, setUser] = useState({
@@ -48,6 +48,8 @@ export default function SignUpPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     console.log(user);
+    console.log("API_BASE_URL =", API_BASE_URL);
+console.log("Request URL =", `${API_BASE_URL}/api/auth/register`);
     try {
       const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
         method: "POST",
